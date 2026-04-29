@@ -1,0 +1,62 @@
+sop_id: example_assembly
+name: "PCB Assembly Example"
+version: "1.0"
+description: "Example PCB assembly SOP with 5 steps"
+max_total_duration: 1800
+
+steps:
+  - step_id: step_1
+    name: "Pick up PCB board"
+    description: "Operator picks up the PCB board from the tray"
+    order: 0
+    estimated_duration: 15
+    timeout: 60
+    rule:
+      expected_objects: ["board", "hand"]
+      min_confidence: 0.6
+      required_count: 1
+
+  - step_id: step_2
+    name: "Apply solder paste"
+    description: "Apply solder paste to designated pads"
+    order: 1
+    estimated_duration: 30
+    timeout: 120
+    rule:
+      expected_objects: ["solder", "board"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: step_3
+    name: "Place components"
+    description: "Place SMD components onto the board"
+    order: 2
+    estimated_duration: 60
+    timeout: 180
+    rule:
+      expected_objects: ["part", "board"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: step_4
+    name: "Soldering"
+    description: "Solder the components using the soldering iron"
+    order: 3
+    estimated_duration: 45
+    timeout: 150
+    rule:
+      expected_objects: ["solder", "tool"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: step_5
+    name: "Visual inspection"
+    description: "Inspect the finished board for defects"
+    order: 4
+    estimated_duration: 20
+    timeout: 90
+    is_optional: false
+    rule:
+      expected_objects: ["board", "person"]
+      min_confidence: 0.5
+      required_count: 1
