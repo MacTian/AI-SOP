@@ -122,15 +122,28 @@ async def lifespan(app: FastAPI):
                 # Persist to DB
                 _save_record(event)
                 # Broadcast via WebSocket (fire-and-forget from sync thread)
-                if state_changed or alert:
-                    try:
-                        loop = asyncio.get_event_loop()
+                try:
+                    loop = asyncio.get_event_loop()
+                    if state_changed:
                         loop.call_soon_threadsafe(
                             asyncio.ensure_future,
                             broadcast_event("sop_event", event.to_dict()),
                         )
-                    except RuntimeError:
-                        pass  # No event loop running yet
+                    if alert:
+                        loop.call_soon_threadsafe(
+                            asyncio.ensure_future,
+                            broadcast_event("alert", {
+                                "alert_id": alert.alert_id,
+                                "level": alert.level,
+                                "sop_id": alert.sop_id,
+                                "step_id": alert.step_id,
+                                "step_name": alert.step_name,
+                                "message": alert.message,
+                                "timestamp": alert.timestamp.isoformat(),
+                            }),
+                        )
+                except RuntimeError:
+                    pass  # No event loop running yet
 
     inference_engine.set_result_callback(on_detection)
 

@@ -46,6 +46,10 @@ import { ref, onMounted, watch, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import axios from 'axios'
 
+const props = defineProps({
+  refreshKey: { type: Number, default: 0 },
+})
+
 const timelineChart = ref(null)
 const statusChart = ref(null)
 const timeRange = ref(30)
@@ -138,6 +142,7 @@ function handleResize() {
 }
 
 watch(timeRange, fetchData)
+watch(() => props.refreshKey, fetchData)
 onMounted(() => {
   fetchData()
   window.addEventListener('resize', handleResize)
