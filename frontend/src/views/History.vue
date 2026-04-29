@@ -1,15 +1,30 @@
 <template>
   <div class="space-y-6">
-    <h2 class="text-xl font-semibold">Operation History</h2>
+    <div class="flex items-center justify-between">
+      <h2 class="text-xl font-semibold">Operation History</h2>
+      <div class="flex items-center space-x-3">
+        <select v-model="selectedSop" class="text-sm border rounded px-2 py-1">
+          <option value="">All SOPs</option>
+          <option v-for="sop in store.sopList" :key="sop.sop_id" :value="sop.sop_id">
+            {{ sop.name }}
+          </option>
+        </select>
+        <label class="flex items-center space-x-1 text-sm text-gray-600">
+          <input type="checkbox" v-model="autoRefresh" class="rounded" />
+          <span>Auto-refresh</span>
+        </label>
+        <button @click="fetchRecords" class="text-sm text-blue-600 hover:underline">
+          Refresh
+        </button>
+      </div>
+    </div>
 
     <div class="bg-white rounded-lg shadow-sm border">
       <div class="p-4 border-b">
-        <div class="flex items-center justify-between">
-          <h3 class="font-medium">Recent Records</h3>
-          <button @click="fetchRecords" class="text-sm text-blue-600 hover:underline">
-            Refresh
-          </button>
-        </div>
+        <h3 class="font-medium">
+          Records
+          <span class="text-gray-400 font-normal text-sm">({{ records.length }})</span>
+        </h3>
       </div>
 
       <div class="overflow-x-auto">
@@ -51,17 +66,38 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import { useMonitorStore } from '../stores/monitor'
 
+const store = useMonitorStore()
 const records = ref([])
+const selectedSop = ref('')
+const autoRefresh = ref(true)
+let refreshTimer = null
 
 async function fetchRecords() {
   try {
-    const { data } = await axios.get('/api/monitor/records', { params: { limit: 200 } })
+    const params = { limit: 200 }
+    if (selectedSop.value) params.sop_id = selectedSop.value
+    const { data } = await axios.get('/api/monitor/records', { params })
     records.value = data.records || []
   } catch {
     records.value = []
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh()
+  if (autoRefresh.value) {
+    refreshTimer = setInterval(fetchRecords, 5000)
+  }
+}
+
+function stopAutoRefresh() {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
   }
 }
 
@@ -81,5 +117,13 @@ function statusClass(status) {
   return map[status] || 'bg-gray-100 text-gray-700'
 }
 
-onMounted(fetchRecords)
+watch(selectedSop, fetchRecords)
+watch(autoRefresh, (val) => val ? startAutoRefresh() : stopAutoRefresh())
+
+onMounted(() => {
+  store.fetchSopList()
+  fetchRecords()
+  startAutoRefresh()
+})
+onUnmounted(stopAutoRefresh)
 </script>

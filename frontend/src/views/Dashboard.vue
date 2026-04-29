@@ -15,12 +15,12 @@
     </div>
 
     <!-- Bottom: Statistics Charts -->
-    <StatsChart />
+    <StatsChart :refreshKey="statsRefreshKey" />
   </div>
 </template>
 
 <script setup>
-import { onMounted, watch } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import VideoStream from '../components/VideoStream.vue'
 import SopProgress from '../components/SopProgress.vue'
 import AlertPanel from '../components/AlertPanel.vue'
@@ -30,10 +30,19 @@ import { useMonitorStore } from '../stores/monitor'
 
 const store = useMonitorStore()
 const { data, connected } = useWebSocket()
+const statsRefreshKey = ref(0)
 
 // Sync WebSocket state to store
 watch(connected, (val) => store.setWsConnected(val))
-watch(data, (msg) => { if (msg) store.handleWsMessage(msg) })
+watch(data, (msg) => {
+  if (msg) {
+    store.handleWsMessage(msg)
+    // Trigger stats refresh on sop_event or alert
+    if (msg.type === 'sop_event' || msg.type === 'alert') {
+      statsRefreshKey.value++
+    }
+  }
+})
 
 onMounted(async () => {
   await Promise.all([
