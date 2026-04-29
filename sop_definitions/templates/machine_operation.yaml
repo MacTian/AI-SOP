@@ -1,0 +1,94 @@
+sop_id: machine_operation
+name: "设备操作流程"
+category: "maintenance"
+description: "标准设备操作流程，适用于 CNC、注塑机等设备的操作"
+
+steps:
+  - step_id: safety_check
+    name: "安全检查"
+    description: "检查设备安全防护装置是否完好"
+    order: 0
+    estimated_duration: 30
+    timeout: 120
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: power_on
+    name: "开机"
+    description: "按照顺序开启设备电源"
+    order: 1
+    estimated_duration: 15
+    timeout: 60
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: load_program
+    name: "加载程序"
+    description: "在控制面板上加载加工程序"
+    order: 2
+    estimated_duration: 30
+    timeout: 120
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: load_material
+    name: "装料"
+    description: "将待加工材料装入设备"
+    order: 3
+    estimated_duration: 30
+    timeout: 120
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: start_process
+    name: "启动加工"
+    description: "启动设备自动加工流程"
+    order: 4
+    estimated_duration: 10
+    timeout: 60
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: monitor_process
+    name: "过程监控"
+    description: "监控设备运行状态，观察加工质量"
+    order: 5
+    estimated_duration: 120
+    timeout: 600
+    is_optional: true
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: unload_product
+    name: "取料"
+    description: "从设备中取出加工完成的产品"
+    order: 6
+    estimated_duration: 20
+    timeout: 90
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: power_off
+    name: "关机"
+    description: "按照顺序关闭设备电源"
+    order: 7
+    estimated_duration: 15
+    timeout: 60
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1

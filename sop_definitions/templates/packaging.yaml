@@ -1,0 +1,71 @@
+sop_id: packaging
+name: "产品包装流程"
+category: "logistics"
+description: "标准产品包装流程，适用于成品包装、发货准备"
+
+steps:
+  - step_id: prepare_box
+    name: "准备包装箱"
+    description: "选择合适尺寸的包装箱"
+    order: 0
+    estimated_duration: 15
+    timeout: 60
+    rule:
+      expected_objects: ["person", "box"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: add_cushion
+    name: "放置缓冲材料"
+    description: "在箱底放置泡沫或气泡膜等缓冲材料"
+    order: 1
+    estimated_duration: 20
+    timeout: 90
+    rule:
+      expected_objects: ["person", "box"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: place_product
+    name: "放入产品"
+    description: "将产品放入包装箱中"
+    order: 2
+    estimated_duration: 15
+    timeout: 60
+    rule:
+      expected_objects: ["person", "box"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: add_accessories
+    name: "放入附件"
+    description: "放入说明书、配件、保修卡等附件"
+    order: 3
+    estimated_duration: 20
+    timeout: 90
+    rule:
+      expected_objects: ["person", "box"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: seal_box
+    name: "封箱"
+    description: "使用胶带封箱并贴上标签"
+    order: 4
+    estimated_duration: 20
+    timeout: 60
+    rule:
+      expected_objects: ["person", "box"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: label_sticker
+    name: "粘贴标签"
+    description: "粘贴物流标签和产品信息标签"
+    order: 5
+    estimated_duration: 15
+    timeout: 60
+    rule:
+      expected_objects: ["person", "box"]
+      min_confidence: 0.5
+      required_count: 1

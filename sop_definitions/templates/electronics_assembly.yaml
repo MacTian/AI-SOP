@@ -1,0 +1,60 @@
+sop_id: electronics_assembly
+name: "电子组装流程"
+category: "manufacturing"
+description: "标准电子元件组装流程，适用于 PCB 板组装、焊接、检测等场景"
+
+steps:
+  - step_id: prepare_materials
+    name: "准备物料"
+    description: "从物料架取出所需电子元件和 PCB 板"
+    order: 0
+    estimated_duration: 30
+    timeout: 120
+    rule:
+      expected_objects: ["person", "board"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: place_components
+    name: "放置元件"
+    description: "将 SMD 元件放置到 PCB 板指定位置"
+    order: 1
+    estimated_duration: 60
+    timeout: 300
+    rule:
+      expected_objects: ["person", "board"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: soldering
+    name: "焊接"
+    description: "使用焊接工具对元件进行焊接"
+    order: 2
+    estimated_duration: 90
+    timeout: 300
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: visual_inspection
+    name: "目视检查"
+    description: "检查焊点质量，确认无虚焊、漏焊"
+    order: 3
+    estimated_duration: 30
+    timeout: 120
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: functional_test
+    name: "功能测试"
+    description: "对组装完成的板卡进行功能测试"
+    order: 4
+    estimated_duration: 60
+    timeout: 180
+    rule:
+      expected_objects: ["person", "board"]
+      min_confidence: 0.5
+      required_count: 1

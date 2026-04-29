@@ -2,12 +2,20 @@
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h2 class="text-xl font-semibold">SOP Editor</h2>
-      <button
-        @click="showCreate = true"
-        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
-      >
-        + New SOP
-      </button>
+      <div class="flex space-x-2">
+        <button
+          @click="showTemplate = true"
+          class="px-4 py-2 border border-blue-300 text-blue-700 rounded-md hover:bg-blue-50 text-sm"
+        >
+          From Template
+        </button>
+        <button
+          @click="showCreate = true"
+          class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+        >
+          + New SOP
+        </button>
+      </div>
     </div>
 
     <!-- SOP List -->
@@ -87,14 +95,23 @@
       </div>
     </div>
   </div>
+
+  <!-- Template Selector -->
+  <TemplateSelector
+    v-if="showTemplate"
+    @close="showTemplate = false"
+    @created="store.fetchSopList()"
+  />
 </template>
 
 <script setup>
 import { ref, onMounted, reactive } from 'vue'
 import { useMonitorStore } from '../stores/monitor'
+import TemplateSelector from '../components/TemplateSelector.vue'
 
 const store = useMonitorStore()
 const showCreate = ref(false)
+const showTemplate = ref(false)
 const editingId = ref(null)
 
 const form = reactive({

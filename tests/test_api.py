@@ -172,3 +172,98 @@ def test_video_snapshot_no_camera(client):
     resp = client.get("/video/snapshot")
     # Should return either an image or an error JSON
     assert resp.status_code == 200
+
+
+# --- Template API ---
+
+def test_template_list(client):
+    resp = client.get("/api/sop/templates/list")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "templates" in data
+    template_ids = [t["sop_id"] for t in data["templates"]]
+    assert "electronics_assembly" in template_ids
+    assert "packaging" in template_ids
+
+
+def test_template_get(client):
+    resp = client.get("/api/sop/templates/electronics_assembly")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["sop_id"] == "electronics_assembly"
+    assert data["name"] == "电子组装流程"
+    assert len(data["steps"]) == 5
+
+
+def test_template_get_not_found(client):
+    resp = client.get("/api/sop/templates/nonexistent")
+    assert resp.status_code == 404
+
+
+def test_template_use(client):
+    resp = client.post("/api/sop/templates/packaging/use", json={
+        "sop_id": "my_packaging",
+        "name": "My Packaging SOP",
+        "description": "Custom packaging",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "ok"
+    assert data["sop_id"] == "my_packaging"
+    assert data["step_count"] == 6
+
+    # Verify the new SOP exists
+    resp = client.get("/api/sop/my_packaging")
+    assert resp.status_code == 200
+    assert resp.json()["name"] == "My Packaging SOP"
+
+    # Cleanup
+    client.delete("/api/sop/my_packaging")
+
+
+def test_template_use_not_found(client):
+    resp = client.post("/api/sop/templates/nonexistent/use", json={
+        "sop_id": "test",
+        "name": "Test",
+    })
+    assert resp.status_code == 404
+
+
+# --- Training API ---
+
+def test_training_status_idle(client):
+    resp = client.get("/api/training/status")
+    assert resp.status_code == 200
+
+
+def test_training_start_and_stop(client):
+    # Start
+    resp = client.post("/api/training/start", json={
+        "sop_name": "Test Training",
+        "sop_description": "Testing",
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "recording"
+
+    # Status should show recording
+    resp = client.get("/api/training/status")
+    assert resp.json()["status"] == "recording"
+
+    # Stop (no frames recorded, but session exists)
+    resp = client.post("/api/training/stop")
+    assert resp.status_code == 200
+
+
+def test_training_result_empty(client):
+    resp = client.get("/api/training/result")
+    assert resp.status_code == 200
+    # Either error or empty steps
+    data = resp.json()
+    assert "error" in data or "steps" in data
+
+
+def test_training_reset(client):
+    resp = client.post("/api/training/reset")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "reset"
