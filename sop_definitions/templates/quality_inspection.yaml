@@ -1,0 +1,60 @@
+sop_id: quality_inspection
+name: "质量检测流程"
+category: "quality"
+description: "产品质量检测标准流程，适用于来料检验、过程检验、成品检验"
+
+steps:
+  - step_id: receive_sample
+    name: "接收样品"
+    description: "从传送带或货架上取下待检样品"
+    order: 0
+    estimated_duration: 15
+    timeout: 60
+    rule:
+      expected_objects: ["person", "box"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: appearance_check
+    name: "外观检查"
+    description: "检查产品外观是否有划痕、变形、色差等缺陷"
+    order: 1
+    estimated_duration: 30
+    timeout: 120
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: dimension_measure
+    name: "尺寸测量"
+    description: "使用量具测量产品关键尺寸"
+    order: 2
+    estimated_duration: 45
+    timeout: 180
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: function_test
+    name: "功能验证"
+    description: "对产品进行功能测试验证"
+    order: 3
+    estimated_duration: 60
+    timeout: 240
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1
+
+  - step_id: record_result
+    name: "记录结果"
+    description: "将检测结果记录到系统中"
+    order: 4
+    estimated_duration: 20
+    timeout: 60
+    rule:
+      expected_objects: ["person"]
+      min_confidence: 0.5
+      required_count: 1

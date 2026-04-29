@@ -16,6 +16,8 @@ from backend.extractor.rule_engine import RuleEngine
 from backend.sop.state_machine import StateMachineEngine
 from backend.sop.sop_manager import SopManager
 from backend.alert.manager import AlertManager
+from backend.training.session import TrainingSession
+from backend.training.analyzer import StepAnalyzer
 from backend.models.database import init_db, SessionLocal
 from backend.models.record import OperationRecord
 
@@ -24,9 +26,11 @@ from backend.api.ws import router as ws_router, heartbeat_loop, broadcast_event
 from backend.api.sop import router as sop_router
 from backend.api.alert_config import router as alert_config_router
 from backend.api.stats import router as stats_router
+from backend.api.training import router as training_router
 from backend.api import monitor as monitor_api
 from backend.api import video as video_api
 from backend.api import alert_config as alert_config_api
+from backend.api import training as training_api
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -99,6 +103,8 @@ async def lifespan(app: FastAPI):
     alert_manager = AlertManager()
     rule_engine = RuleEngine()
     sop_manager = SopManager()
+    training_session = TrainingSession()
+    step_analyzer = StepAnalyzer()
 
     # Load SOP rules into rule engine
     _load_sop_rules(sop_manager, rule_engine)
@@ -110,10 +116,17 @@ async def lifespan(app: FastAPI):
     video_api.set_capture(camera)
     video_api.set_preprocessor(inference_engine.preprocessor)
     video_api.set_inference_engine(inference_engine)
+    training_api.set_session(training_session)
+    training_api.set_analyzer(step_analyzer)
+    training_api.set_sop_manager(sop_manager)
 
     # Detection result callback: detection → rules → state machine → alert → db → ws
     def on_detection(result):
         """Process each detection through the full pipeline."""
+        # Record frame if training
+        if training_session.is_recording:
+            training_session.record_frame(result)
+
         for sop_id in [m["sop_id"] for m in sop_manager.list_sops()]:
             events = rule_engine.evaluate(sop_id, result)
             for event in events:
@@ -192,6 +205,7 @@ app.include_router(monitor_api.router)
 app.include_router(video_api.router)
 app.include_router(alert_config_router)
 app.include_router(stats_router)
+app.include_router(training_router)
 
 
 @app.get("/")
