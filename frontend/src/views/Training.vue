@@ -140,6 +140,67 @@
       @save="showSaveDialog = true"
     />
 
+    <!-- LSTM Model Training Section -->
+    <div class="bg-white rounded-lg shadow-sm border p-6">
+      <h3 class="font-medium mb-4">LSTM Action Classifier Training</h3>
+      <p class="text-sm text-gray-500 mb-4">
+        Train an LSTM model for temporal action recognition. Uses synthetic data to learn step patterns
+        from YOLO detections + hand keypoint features.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Number of Classes</label>
+          <input v-model.number="lstmForm.num_classes" type="number" min="2" max="20"
+            class="w-full border rounded-md px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Epochs</label>
+          <input v-model.number="lstmForm.epochs" type="number" min="5" max="200"
+            class="w-full border rounded-md px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Hidden Size</label>
+          <input v-model.number="lstmForm.hidden_size" type="number" min="32" max="512"
+            class="w-full border rounded-md px-3 py-2 text-sm" />
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <button
+          @click="trainLstm"
+          :disabled="lstmStatus.is_training"
+          class="px-6 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+        >
+          {{ lstmStatus.is_training ? 'Training...' : 'Train LSTM Model' }}
+        </button>
+
+        <span v-if="lstmResult" class="text-sm" :class="lstmResult.status === 'completed' ? 'text-green-600' : 'text-red-600'">
+          {{ lstmResult.status === 'completed'
+            ? `Done! Accuracy: ${(lstmResult.final_accuracy * 100).toFixed(1)}% (${lstmResult.elapsed_seconds}s)`
+            : lstmResult.error || 'Failed' }}
+        </span>
+      </div>
+
+      <!-- Training Progress -->
+      <div v-if="lstmStatus.history && lstmStatus.history.length > 0" class="mt-4">
+        <div class="flex items-center space-x-2 mb-2">
+          <span class="text-xs text-gray-500">Training Progress</span>
+          <div class="flex-1 bg-gray-200 rounded-full h-1.5">
+            <div
+              class="bg-purple-600 h-1.5 rounded-full transition-all"
+              :style="{ width: `${(lstmStatus.history.length / lstmForm.epochs) * 100}%` }"
+            ></div>
+          </div>
+          <span class="text-xs text-gray-500">{{ lstmStatus.history.length }}/{{ lstmForm.epochs }}</span>
+        </div>
+        <div class="text-xs text-gray-500">
+          Last: loss={{ lstmStatus.history[lstmStatus.history.length - 1]?.loss }},
+          acc={{ (lstmStatus.history[lstmStatus.history.length - 1]?.accuracy * 100)?.toFixed(1) }}%
+        </div>
+      </div>
+    </div>
+
     <!-- Save Dialog -->
     <div v-if="showSaveDialog" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
@@ -183,6 +244,11 @@ const analysisResult = ref(null)
 const steps = ref([])
 const showSaveDialog = ref(false)
 const saveForm = ref({ sop_id: '', name: '', description: '' })
+
+// LSTM training
+const lstmForm = ref({ num_classes: 5, epochs: 30, hidden_size: 128 })
+const lstmStatus = ref({ is_training: false, history: [] })
+const lstmResult = ref(null)
 
 const timer = ref(0)
 let timerInterval = null
@@ -284,6 +350,19 @@ async function saveSop() {
 
 function startStatusPolling() {
   statusInterval = setInterval(fetchStatus, 2000)
+}
+
+async function trainLstm() {
+  lstmResult.value = null
+  lstmStatus.value = { is_training: true, history: [] }
+  try {
+    const { data } = await axios.post('/api/training/lstm/train', lstmForm.value)
+    lstmResult.value = data
+    lstmStatus.value = { is_training: false, history: data.history || [] }
+  } catch (e) {
+    lstmResult.value = { status: 'failed', error: e.response?.data?.error || e.message }
+    lstmStatus.value = { is_training: false, history: [] }
+  }
 }
 
 function formatDuration(seconds) {

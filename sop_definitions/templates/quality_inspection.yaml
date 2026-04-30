@@ -14,6 +14,7 @@ steps:
       expected_objects: ["person", "box"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3
 
   - step_id: appearance_check
     name: "外观检查"
@@ -25,6 +26,7 @@ steps:
       expected_objects: ["person"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3
 
   - step_id: dimension_measure
     name: "尺寸测量"
@@ -36,6 +38,7 @@ steps:
       expected_objects: ["person"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3
 
   - step_id: function_test
     name: "功能验证"
@@ -47,6 +50,7 @@ steps:
       expected_objects: ["person"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3
 
   - step_id: record_result
     name: "记录结果"
@@ -58,3 +62,4 @@ steps:
       expected_objects: ["person"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3

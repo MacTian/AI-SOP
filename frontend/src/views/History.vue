@@ -16,6 +16,9 @@
         <button @click="fetchRecords" class="text-sm text-blue-600 hover:underline">
           Refresh
         </button>
+        <button @click="exportCsv" class="text-sm text-green-600 hover:underline">
+          Export CSV
+        </button>
       </div>
     </div>
 
@@ -36,6 +39,7 @@
               <th class="px-4 py-2 text-left font-medium text-gray-600">Step</th>
               <th class="px-4 py-2 text-left font-medium text-gray-600">Status</th>
               <th class="px-4 py-2 text-left font-medium text-gray-600">Confidence</th>
+              <th class="px-4 py-2 text-left font-medium text-gray-600">Screenshot</th>
             </tr>
           </thead>
           <tbody class="divide-y">
@@ -52,14 +56,41 @@
                 </span>
               </td>
               <td class="px-4 py-2">{{ (r.confidence * 100).toFixed(1) }}%</td>
+              <td class="px-4 py-2">
+                <button
+                  v-if="r.screenshot_path"
+                  @click="previewScreenshot(r.screenshot_path)"
+                  class="text-blue-600 hover:underline text-xs"
+                >
+                  View
+                </button>
+                <span v-else class="text-gray-300 text-xs">-</span>
+              </td>
             </tr>
             <tr v-if="records.length === 0">
-              <td colspan="5" class="px-4 py-8 text-center text-gray-400">
+              <td colspan="6" class="px-4 py-8 text-center text-gray-400">
                 No records yet.
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Screenshot preview modal -->
+    <div
+      v-if="previewUrl"
+      class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+      @click.self="previewUrl = null"
+    >
+      <div class="relative max-w-4xl max-h-[90vh]">
+        <button
+          @click="previewUrl = null"
+          class="absolute -top-3 -right-3 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-lg text-gray-600 hover:text-gray-900 z-10"
+        >
+          &times;
+        </button>
+        <img :src="previewUrl" class="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
       </div>
     </div>
   </div>
@@ -74,6 +105,7 @@ const store = useMonitorStore()
 const records = ref([])
 const selectedSop = ref('')
 const autoRefresh = ref(true)
+const previewUrl = ref(null)
 let refreshTimer = null
 
 async function fetchRecords() {
@@ -115,6 +147,20 @@ function statusClass(status) {
     timeout: 'bg-orange-100 text-orange-700',
   }
   return map[status] || 'bg-gray-100 text-gray-700'
+}
+
+function previewScreenshot(path) {
+  // path is absolute like /home/mac/sop-monitor/screenshots/xxx.jpg
+  // Extract filename for the API endpoint
+  const filename = path.split('/').pop()
+  previewUrl.value = `/video/screenshots/${filename}`
+}
+
+function exportCsv() {
+  const params = new URLSearchParams()
+  if (selectedSop.value) params.set('sop_id', selectedSop.value)
+  const url = `/api/monitor/records/export${params.toString() ? '?' + params : ''}`
+  window.open(url, '_blank')
 }
 
 watch(selectedSop, fetchRecords)

@@ -31,6 +31,9 @@ class SopInstance:
         self.started_at: float = time.time()
         self.completed_at: float | None = None
         self._step_start_times: dict[str, float] = {}
+        self._consecutive_hits: dict[str, int] = {
+            step.step_id: 0 for step in definition.steps
+        }
 
     @property
     def current_step(self) -> SopStep | None:
@@ -95,8 +98,19 @@ class SopInstance:
                     logger.warning(f"SOP {self.definition.sop_id}: step {step.step_id} TIMEOUT")
         return timed_out
 
+    def _get_confirm_frames(self, step_id: str) -> int:
+        """Get the confirm_frames threshold for a step."""
+        for step in self.definition.steps:
+            if step.step_id == step_id:
+                return step.rule.confirm_frames
+        return 3  # fallback default
+
     def process_event(self, event: SopEvent) -> bool:
-        """Process a detected event. Returns True if it caused a state change."""
+        """Process a detected event. Returns True if it caused a state change.
+
+        Hit-frame confirmation: an ACTIVE step only completes after
+        `confirm_frames` consecutive matching detections.
+        """
         if event.sop_id != self.definition.sop_id:
             return False
 
@@ -111,21 +125,47 @@ class SopInstance:
         if event.status == "detected":
             if current_status == StepStatus.PENDING:
                 self.start_step(step_id)
+                self._consecutive_hits[step_id] = 1
                 return True
             elif current_status == StepStatus.ACTIVE:
-                self.complete_step(step_id)
-                return True
+                self._consecutive_hits[step_id] += 1
+                confirm_needed = self._get_confirm_frames(step_id)
+                if self._consecutive_hits[step_id] >= confirm_needed:
+                    self.complete_step(step_id)
+                    return True
+                else:
+                    logger.debug(
+                        f"SOP {self.definition.sop_id}: step {step_id} hit "
+                        f"{self._consecutive_hits[step_id]}/{confirm_needed}"
+                    )
+                    return False
 
         return False
 
+    def reset_step_hits(self, step_id: str):
+        """Reset consecutive hit counter for a step (e.g. on missed detection)."""
+        if step_id in self._consecutive_hits:
+            self._consecutive_hits[step_id] = 0
+
     def get_state_dict(self) -> dict:
         """Return serializable state snapshot."""
+        # Build per-step hit progress info
+        step_hit_progress = {}
+        for step in self.definition.steps:
+            sid = step.step_id
+            confirm = step.rule.confirm_frames
+            step_hit_progress[sid] = {
+                "hits": self._consecutive_hits.get(sid, 0),
+                "required": confirm,
+            }
+
         return {
             "sop_id": self.definition.sop_id,
             "sop_name": self.definition.name,
             "current_step_index": self.current_step_index,
             "current_step_name": self.current_step.name if self.current_step else None,
             "step_statuses": {k: v.value for k, v in self.step_statuses.items()},
+            "step_hit_progress": step_hit_progress,
             "progress": round(self.progress, 3),
             "is_complete": self.is_complete,
             "elapsed_time": round(time.time() - self.started_at, 1),
@@ -143,7 +183,9 @@ class StateMachineEngine:
         instance = SopInstance(definition)
         # Auto-start first step
         if definition.steps:
-            instance.start_step(definition.steps[0].step_id)
+            first_step_id = definition.steps[0].step_id
+            instance.start_step(first_step_id)
+            instance._consecutive_hits[first_step_id] = 1
         self._instances[definition.sop_id] = instance
         logger.info(f"Started SOP instance: {definition.sop_id}")
         return instance

@@ -8,6 +8,7 @@ class StepRule(BaseModel):
     expected_objects: list[str] = Field(default_factory=list)
     min_confidence: float = 0.5
     required_count: int = 1
+    confirm_frames: int = 3  # consecutive matching frames needed to confirm step completion
 
 
 class SopStep(BaseModel):

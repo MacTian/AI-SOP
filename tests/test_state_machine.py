@@ -105,7 +105,11 @@ def test_state_machine_process_event():
     sop = make_test_sop()
     engine.start_sop(sop)
     event = SopEvent(sop_id="test", step_id="s1", step_name="Step 1", status="detected")
-    changed = engine.process_event(event)
+    # start_sop sets s1 ACTIVE with hits=1 (counts the activation as first hit).
+    # With confirm_frames=3, need 2 more hits to complete.
+    changed = engine.process_event(event)  # hit 2
+    assert changed is False
+    changed = engine.process_event(event)  # hit 3 → complete
     assert changed is True
 
 
@@ -128,3 +132,94 @@ def test_instance_timeout_check():
     timed_out = inst.check_timeouts()
     assert "s1" in timed_out
     assert inst.step_statuses["s1"] == StepStatus.TIMEOUT
+
+
+# --- Hit-frame confirmation tests ---
+
+def make_confirm_sop(confirm_frames=3):
+    """Create a SOP with explicit confirm_frames settings."""
+    steps = [
+        SopStep(step_id="s1", name="Step 1", order=0, timeout=10,
+                rule=StepRule(expected_objects=["hand"], confirm_frames=confirm_frames)),
+        SopStep(step_id="s2", name="Step 2", order=1, timeout=10,
+                rule=StepRule(expected_objects=["tool"], confirm_frames=confirm_frames)),
+    ]
+    return SopDefinition(sop_id="confirm_test", name="Confirm Test SOP", steps=steps)
+
+
+def test_hit_frame_does_not_complete_before_threshold():
+    """Step should NOT complete until confirm_frames consecutive hits."""
+    sop = make_confirm_sop(confirm_frames=3)
+    inst = SopInstance(sop)
+
+    # First detected → PENDING → ACTIVE (not completed)
+    event = SopEvent(sop_id="confirm_test", step_id="s1", step_name="Step 1", status="detected")
+    changed = inst.process_event(event)
+    assert changed is True
+    assert inst.step_statuses["s1"] == StepStatus.ACTIVE
+
+    # Second detected → still ACTIVE (hit count = 2, need 3)
+    changed = inst.process_event(event)
+    assert changed is False
+    assert inst.step_statuses["s1"] == StepStatus.ACTIVE
+
+    # Third detected → COMPLETED (hit count = 3, reached threshold)
+    changed = inst.process_event(event)
+    assert changed is True
+    assert inst.step_statuses["s1"] == StepStatus.COMPLETED
+
+
+def test_hit_frame_resets_on_missing_detection():
+    """Consecutive hit counter should reset if step doesn't get detected."""
+    sop = make_confirm_sop(confirm_frames=3)
+    inst = SopInstance(sop)
+
+    event = SopEvent(sop_id="confirm_test", step_id="s1", step_name="Step 1", status="detected")
+
+    # First hit
+    inst.process_event(event)
+    assert inst._consecutive_hits["s1"] == 1
+
+    # Simulate missed detection by resetting hits
+    inst.reset_step_hits("s1")
+    assert inst._consecutive_hits["s1"] == 0
+
+    # Need 3 more hits to complete
+    inst.process_event(event)  # hit 1
+    inst.process_event(event)  # hit 2
+    assert inst.step_statuses["s1"] == StepStatus.ACTIVE
+
+    inst.process_event(event)  # hit 3 → complete
+    assert inst.step_statuses["s1"] == StepStatus.COMPLETED
+
+
+def test_hit_frame_with_confirm_frames_1():
+    """With confirm_frames=1, first detection after ACTIVE should complete."""
+    sop = make_confirm_sop(confirm_frames=1)
+    inst = SopInstance(sop)
+
+    event = SopEvent(sop_id="confirm_test", step_id="s1", step_name="Step 1", status="detected")
+    # First detected → ACTIVE
+    inst.process_event(event)
+    assert inst.step_statuses["s1"] == StepStatus.ACTIVE
+
+    # Second detected → COMPLETED (only need 1 consecutive hit after ACTIVE)
+    inst.process_event(event)
+    assert inst.step_statuses["s1"] == StepStatus.COMPLETED
+
+
+def test_hit_frame_progress_in_state_dict():
+    """State dict should include step_hit_progress."""
+    sop = make_confirm_sop(confirm_frames=5)
+    inst = SopInstance(sop)
+
+    state = inst.get_state_dict()
+    assert "step_hit_progress" in state
+    assert state["step_hit_progress"]["s1"]["hits"] == 0
+    assert state["step_hit_progress"]["s1"]["required"] == 5
+
+    # One hit
+    event = SopEvent(sop_id="confirm_test", step_id="s1", step_name="Step 1", status="detected")
+    inst.process_event(event)
+    state = inst.get_state_dict()
+    assert state["step_hit_progress"]["s1"]["hits"] == 1
