@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  sop-monitor:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./sop_definitions:/app/sop_definitions
+      - ./screenshots:/app/screenshots
+      - sop-db:/app/data
+    environment:
+      - SOP_CAMERA_DEVICE=0
+      - SOP_MODEL_PATH=yolov8n.pt
+      - SOP_DATABASE_URL=sqlite:///./data/sop_monitor.db
+      - SOP_CONFIDENCE_THRESHOLD=0.5
+      - SOP_INFERENCE_INTERVAL=0.5
+      - SOP_DEFAULT_CONFIRM_FRAMES=3
+    devices:
+      - /dev/video0:/dev/video0
+    restart: unless-stopped
+
+volumes:
+  sop-db:

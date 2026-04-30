@@ -106,6 +106,31 @@
 
 ---
 
+## P3: Docker 部署 + 多摄像头 + 顺序约束 ✅
+
+### P3-1: Docker 部署
+- Dockerfile（多阶段构建：前端 build + 后端运行）
+- docker-compose.yml（单服务，含设备挂载、卷映射、环境变量）
+- requirements.txt（Python 依赖清单）
+- main.py 增加静态文件服务（SPA catch-all 路由）
+
+### P3-2: 多摄像头支持
+- config 新增 `camera_devices` 字段（逗号分隔设备号列表）
+- `backend/camera/multi_camera.py` — MultiCameraManager，每个摄像头独立推理线程
+- `backend/api/video.py` — 新增 `/video/cameras` 和 `/video/stream/{camera_id}` 端点
+- `tests/test_multi_camera.py` — 9 个测试用例
+
+### P3-3: 顺序约束强化
+- config 新增 `strict_order` 字段（默认 False）
+- StateMachineEngine 接收 strict_order 参数并传递给 SopInstance
+- SopInstance.process_event 中 strict_order 模式下拒绝非当前步骤事件
+- `tests/test_state_machine.py` — 新增 4 个 strict_order 测试
+
+### 验证
+- 121 个测试全部通过（含 13 个新增测试）
+
+---
+
 ## P2: 视频文件分析 + Top3 候选显示 ✅
 
 ### P2-1: 视频文件分析

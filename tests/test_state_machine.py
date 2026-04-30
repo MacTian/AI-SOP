@@ -223,3 +223,52 @@ def test_hit_frame_progress_in_state_dict():
     inst.process_event(event)
     state = inst.get_state_dict()
     assert state["step_hit_progress"]["s1"]["hits"] == 1
+
+
+# --- Strict order tests ---
+
+def test_strict_order_rejects_non_current_step():
+    """In strict_order mode, events for non-current steps should be rejected."""
+    sop = make_test_sop()
+    inst = SopInstance(sop, strict_order=True)
+
+    # Current step is s1. Try to detect s2 — should be rejected.
+    event_s2 = SopEvent(sop_id="test", step_id="s2", step_name="Step 2", status="detected")
+    changed = inst.process_event(event_s2)
+    assert changed is False
+    assert inst.step_statuses["s2"] == StepStatus.PENDING
+
+
+def test_strict_order_allows_current_step():
+    """In strict_order mode, events for the current step should be accepted."""
+    sop = make_test_sop()
+    inst = SopInstance(sop, strict_order=True)
+
+    event_s1 = SopEvent(sop_id="test", step_id="s1", step_name="Step 1", status="detected")
+    changed = inst.process_event(event_s1)
+    assert changed is True
+    assert inst.step_statuses["s1"] == StepStatus.ACTIVE
+
+
+def test_strict_order_engine():
+    """StateMachineEngine with strict_order should propagate to instances."""
+    engine = StateMachineEngine(strict_order=True)
+    sop = make_test_sop()
+    inst = engine.start_sop(sop)
+    assert inst.strict_order is True
+
+    # Try to detect s2 while s1 is current — should fail
+    event_s2 = SopEvent(sop_id="test", step_id="s2", step_name="Step 2", status="detected")
+    changed = engine.process_event(event_s2)
+    assert changed is False
+
+
+def test_non_strict_order_allows_non_current_step():
+    """Without strict_order, events for non-current steps should be allowed."""
+    sop = make_test_sop()
+    inst = SopInstance(sop, strict_order=False)
+
+    event_s2 = SopEvent(sop_id="test", step_id="s2", step_name="Step 2", status="detected")
+    changed = inst.process_event(event_s2)
+    assert changed is True
+    assert inst.step_statuses["s2"] == StepStatus.ACTIVE
