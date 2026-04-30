@@ -4,11 +4,15 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from backend.config import settings
 from backend.camera.capture import CameraCapture
+from backend.camera.multi_camera import MultiCameraManager
 from backend.camera.preprocessor import ImagePreprocessor
 from backend.inference.detector import Detector
 from backend.inference.engine import InferenceEngine
@@ -41,6 +45,7 @@ logger = logging.getLogger(__name__)
 # Shared components (initialized in lifespan)
 camera: CameraCapture | None = None
 inference_engine: InferenceEngine | None = None
+multi_camera: MultiCameraManager | None = None
 state_machine: StateMachineEngine | None = None
 alert_manager: AlertManager | None = None
 rule_engine: RuleEngine | None = None
@@ -92,7 +97,7 @@ def _save_record(event, screenshot_path=None):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
-    global camera, inference_engine, state_machine, alert_manager, rule_engine
+    global camera, inference_engine, multi_camera, state_machine, alert_manager, rule_engine
 
     logger.info("Starting AI SOP Monitor...")
 
@@ -103,7 +108,7 @@ async def lifespan(app: FastAPI):
     camera = CameraCapture()
     detector = Detector()
     inference_engine = InferenceEngine(camera, detector)
-    state_machine = StateMachineEngine()
+    state_machine = StateMachineEngine(strict_order=settings.strict_order)
     alert_manager = AlertManager()
     rule_engine = RuleEngine()
     sop_manager = SopManager()
@@ -121,6 +126,7 @@ async def lifespan(app: FastAPI):
     video_api.set_capture(camera)
     video_api.set_preprocessor(inference_engine.preprocessor)
     video_api.set_inference_engine(inference_engine)
+    video_api.set_multi_camera(multi_camera)
     training_api.set_session(training_session)
     training_api.set_analyzer(step_analyzer)
     training_api.set_sop_manager(sop_manager)
@@ -237,12 +243,26 @@ async def lifespan(app: FastAPI):
 
     inference_engine.set_result_callback(on_detection)
 
-    # Start camera
-    camera_ok = camera.start()
-    if camera_ok:
-        inference_engine.start()
+    # Start camera(s)
+    if settings.camera_devices:
+        # Multi-camera mode
+        multi_camera = MultiCameraManager()
+        multi_camera.set_callback(lambda cam_id, result: on_detection(result))
+        results = multi_camera.start()
+        for cam_id, ok in results.items():
+            if ok:
+                logger.info(f"Multi-camera: /dev/video{cam_id} active")
+            else:
+                logger.warning(f"Multi-camera: /dev/video{cam_id} failed")
+        if not any(results.values()):
+            logger.warning("No cameras available - running in API-only mode")
     else:
-        logger.warning("Camera not available - running in API-only mode")
+        # Single camera mode
+        camera_ok = camera.start()
+        if camera_ok:
+            inference_engine.start()
+        else:
+            logger.warning("Camera not available - running in API-only mode")
 
     # Start heartbeat background task
     heartbeat_task = asyncio.create_task(heartbeat_loop())
@@ -252,6 +272,8 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down AI SOP Monitor...")
     heartbeat_task.cancel()
+    if multi_camera:
+        multi_camera.stop()
     if inference_engine:
         inference_engine.stop()
     if camera:
@@ -302,3 +324,19 @@ async def health():
         "camera": camera.is_running if camera else False,
         "inference": inference_engine._running if inference_engine else False,
     }
+
+
+# Serve built frontend in Docker mode (static/ directory exists)
+_static_dir = Path(__file__).parent.parent / "static"
+if _static_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(_static_dir / "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """Catch-all: serve frontend files or fall back to index.html for SPA routing."""
+        file_path = _static_dir / full_path
+        if file_path.is_file():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(file_path))
+        from fastapi.responses import FileResponse
+        return FileResponse(str(_static_dir / "index.html"))

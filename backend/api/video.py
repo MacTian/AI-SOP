@@ -16,6 +16,7 @@ router = APIRouter(tags=["Video"])
 _capture = None
 _preprocessor = None
 _inference_engine = None
+_multi_camera = None
 
 SCREENSHOTS_DIR = Path(__file__).parent.parent.parent / "screenshots"
 
@@ -33,6 +34,11 @@ def set_preprocessor(preprocessor):
 def set_inference_engine(engine):
     global _inference_engine
     _inference_engine = engine
+
+
+def set_multi_camera(multi_camera):
+    global _multi_camera
+    _multi_camera = multi_camera
 
 
 async def generate_mjpeg():
@@ -153,3 +159,45 @@ async def get_screenshot(filename: str):
     if not filepath.exists():
         return {"error": "Screenshot not found"}
     return Response(content=filepath.read_bytes(), media_type="image/jpeg")
+
+
+@router.get("/video/cameras")
+async def list_cameras():
+    """List active cameras in multi-camera mode."""
+    if _multi_camera is None:
+        return {"cameras": [], "mode": "single"}
+    return {
+        "cameras": _multi_camera.get_active_cameras(),
+        "mode": "multi",
+    }
+
+
+@router.get("/video/stream/{camera_id}")
+async def video_stream_camera(camera_id: int):
+    """MJPEG stream for a specific camera in multi-camera mode."""
+    if _multi_camera is None:
+        return {"error": "Multi-camera mode not active"}
+
+    async def generate():
+        import cv2
+        while True:
+            frame = _multi_camera.get_frame(camera_id)
+            if frame is None:
+                await asyncio.sleep(0.5)
+                continue
+            if _preprocessor:
+                jpeg_bytes = _preprocessor.to_jpeg(frame)
+            else:
+                _, buf = cv2.imencode(".jpg", frame)
+                jpeg_bytes = buf.tobytes()
+            if jpeg_bytes:
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n"
+                )
+            await asyncio.sleep(1.0 / 15)
+
+    return StreamingResponse(
+        generate(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )

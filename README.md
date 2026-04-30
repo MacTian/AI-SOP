@@ -67,6 +67,9 @@ cd frontend && npm install
 # 方式二：分别启动
 ./scripts/run_backend.sh    # 后端 → http://localhost:8000
 ./scripts/run_frontend.sh   # 前端 → http://localhost:5173
+
+# 方式三：Docker 部署
+docker compose up --build    # http://localhost:8000
 ```
 
 ### 3. 访问系统
@@ -87,6 +90,7 @@ sop-monitor/
 │   ├── config.py                   # Pydantic Settings 配置
 │   ├── camera/
 │   │   ├── capture.py              # OpenCV 摄像头采集线程
+│   │   ├── multi_camera.py         # 多摄像头管理器
 │   │   └── preprocessor.py         # 图像预处理（resize, ROI, JPEG）
 │   ├── inference/
 │   │   ├── detector.py             # YOLOv8 检测器（支持 mock fallback）
@@ -103,7 +107,7 @@ sop-monitor/
 │   │   └── rule_engine.py          # 检测结果→SOP 步骤事件映射
 │   ├── sop/
 │   │   ├── schema.py               # SOP Pydantic 模型（含 confirm_frames）
-│   │   ├── state_machine.py        # SOP 状态机（命中帧确认机制）
+│   │   ├── state_machine.py        # SOP 状态机（命中帧确认 + 严格顺序）
 │   │   └── sop_manager.py          # SOP YAML 文件 CRUD
 │   ├── alert/
 │   │   └── manager.py              # 告警管理（去重、升级、规则配置）
@@ -141,8 +145,11 @@ sop-monitor/
 ├── sop_definitions/
 │   ├── example_assembly.yaml       # 示例 SOP
 │   └── templates/                  # 4 个预置模板
-├── tests/                          # 108 个测试用例
-└── scripts/                        # 启动脚本
+├── tests/                          # 121 个测试用例
+├── scripts/                        # 启动脚本
+├── Dockerfile                      # 多阶段构建（前端 + 后端）
+├── docker-compose.yml              # Docker Compose 服务定义
+└── requirements.txt                # Python 依赖清单
 ```
 
 ## SOP 定义文件
@@ -191,6 +198,8 @@ steps:
 | GET | `/video/stream` | MJPEG 视频流 |
 | GET | `/video/snapshot` | 单帧 JPEG 截图 |
 | GET | `/video/screenshots/{filename}` | 获取截图 |
+| GET | `/video/cameras` | 列出活跃摄像头 |
+| GET | `/video/stream/{camera_id}` | 指定摄像头 MJPEG 流 |
 | POST | `/api/video/analyze` | 上传视频文件分析 |
 
 ### 训练
@@ -217,11 +226,13 @@ steps:
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `SOP_CAMERA_DEVICE` | 0 | 摄像头设备号 |
+| `SOP_CAMERA_DEVICES` | "" | 多摄像头设备号（逗号分隔，如 "0,1,2"） |
 | `SOP_CAMERA_FPS` | 15 | 采集帧率 |
 | `SOP_MODEL_PATH` | models/yolov8n.pt | YOLO 模型路径 |
 | `SOP_CONFIDENCE_THRESHOLD` | 0.5 | 检测置信度阈值 |
 | `SOP_INFERENCE_INTERVAL` | 0.5 | 推理间隔（秒） |
 | `SOP_DEFAULT_CONFIRM_FRAMES` | 3 | 默认命中帧确认数 |
+| `SOP_STRICT_ORDER` | false | 严格顺序模式（禁止跳步） |
 | `SOP_ALERT_COOLDOWN` | 30 | 告警去重冷却（秒） |
 
 ## 测试
@@ -231,7 +242,7 @@ cd /home/mac/sop-monitor
 python3 -m pytest tests/ -v
 ```
 
-108 个测试覆盖：SOP schema、状态机（含命中帧确认）、规则引擎、告警管理、检测器、SOP 管理、训练功能、LSTM 分类器、全部 API 端点。
+121 个测试覆盖：SOP schema、状态机（含命中帧确认 + 严格顺序）、规则引擎、告警管理、检测器、SOP 管理、训练功能、LSTM 分类器、多摄像头、全部 API 端点。
 
 ## 运行流程
 

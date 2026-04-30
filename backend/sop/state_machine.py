@@ -22,8 +22,9 @@ class StepStatus(str, Enum):
 class SopInstance:
     """Runtime state for a single SOP execution instance."""
 
-    def __init__(self, definition: SopDefinition):
+    def __init__(self, definition: SopDefinition, strict_order: bool = False):
         self.definition = definition
+        self.strict_order = strict_order
         self.current_step_index: int = 0
         self.step_statuses: dict[str, StepStatus] = {
             step.step_id: StepStatus.PENDING for step in definition.steps
@@ -110,6 +111,9 @@ class SopInstance:
 
         Hit-frame confirmation: an ACTIVE step only completes after
         `confirm_frames` consecutive matching detections.
+
+        When strict_order is enabled, events for non-current steps are rejected
+        to prevent operators from skipping ahead.
         """
         if event.sop_id != self.definition.sop_id:
             return False
@@ -117,6 +121,15 @@ class SopInstance:
         step_id = event.step_id
         if step_id not in self.step_statuses:
             return False
+
+        # Strict order: reject events for steps that aren't the current one
+        if self.strict_order and self.current_step:
+            if step_id != self.current_step.step_id:
+                logger.debug(
+                    f"SOP {self.definition.sop_id}: strict_order rejecting "
+                    f"event for {step_id} (current: {self.current_step.step_id})"
+                )
+                return False
 
         current_status = self.step_statuses[step_id]
         if current_status in (StepStatus.COMPLETED, StepStatus.SKIPPED):
@@ -175,12 +188,13 @@ class SopInstance:
 class StateMachineEngine:
     """Manages multiple SOP execution instances."""
 
-    def __init__(self):
+    def __init__(self, strict_order: bool = False):
         self._instances: dict[str, SopInstance] = {}
+        self._strict_order = strict_order
 
     def start_sop(self, definition: SopDefinition) -> SopInstance:
         """Start a new SOP execution instance."""
-        instance = SopInstance(definition)
+        instance = SopInstance(definition, strict_order=self._strict_order)
         # Auto-start first step
         if definition.steps:
             first_step_id = definition.steps[0].step_id

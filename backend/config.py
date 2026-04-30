@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     # Camera
     camera_device: int = 0
+    camera_devices: str = ""  # comma-separated device IDs for multi-camera, e.g. "0,1,2"
     camera_fps: int = 15
     camera_width: int = 640
     camera_height: int = 480
@@ -32,6 +33,7 @@ class Settings(BaseSettings):
 
     # State machine
     default_confirm_frames: int = 3  # consecutive hits needed to confirm step
+    strict_order: bool = False  # reject events for non-current steps
 
     # CORS
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
