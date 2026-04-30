@@ -1,5 +1,60 @@
 # Phase 4 完善计划
 
+## P4-1: 用户认证（JWT） ✅
+
+**问题**: 所有 API 端点无认证，任何人可访问。
+
+**方案**: JWT Token 认证，默认管理员账户，前端登录页 + 路由守卫。
+
+### 后端
+
+| 文件 | 变更 |
+|------|------|
+| `backend/config.py` | 新增 `secret_key`、`token_expire_minutes`、`default_admin_password` 配置 |
+| `backend/models/user.py` | 新建 User ORM 模型（id, username, hashed_password, role, created_at） |
+| `backend/models/database.py` | users 表自动创建 + 种子管理员账户 |
+| `backend/api/auth.py` | 新建：POST /api/auth/login、GET /api/auth/me、get_current_user 依赖 |
+| `backend/main.py` | 注册 auth_router |
+| `backend/api/sop.py` | 添加 auth 依赖 |
+| `backend/api/monitor.py` | 添加 auth 依赖 |
+| `backend/api/stats.py` | 添加 auth 依赖 |
+| `backend/api/alert_config.py` | 添加 auth 依赖 |
+| `backend/api/training.py` | 添加 auth 依赖 |
+| `backend/api/video_analysis.py` | 添加 auth 依赖 |
+| `requirements.txt` | 新增 python-jose、passlib |
+
+### 前端
+
+| 文件 | 变更 |
+|------|------|
+| `frontend/src/api/http.js` | 新建：axios 实例 + 请求拦截器（注入 Token）+ 响应拦截器（401 跳转） |
+| `frontend/src/stores/auth.js` | 新建：Pinia 认证状态（token, user, login, logout） |
+| `frontend/src/views/Login.vue` | 新建：登录页面 |
+| `frontend/src/router/index.js` | 新增 /login 路由 + beforeEach 守卫 |
+| `frontend/src/App.vue` | 导航栏增加用户信息 + 退出按钮，未登录隐藏导航 |
+| `frontend/src/stores/monitor.js` | axios → http 实例 |
+| `frontend/src/views/Dashboard.vue` | axios → http 实例 |
+| `frontend/src/views/History.vue` | axios → http 实例 |
+| `frontend/src/views/Training.vue` | axios → http 实例 |
+| `frontend/src/components/TemplateSelector.vue` | axios → http 实例 |
+| `frontend/src/components/StatsChart.vue` | axios → http 实例 |
+| `frontend/src/components/AlertPanel.vue` | axios → http 实例 |
+| `tests/conftest.py` | 新增 auth_headers fixture |
+| `tests/test_api.py` | 所有测试添加 auth_headers + 新增 4 个认证测试 |
+
+### 认证策略
+- 公开端点：`/api/auth/login`、`/`、`/health`、`/video/*`、`/ws`、`/docs`、`/openapi.json`
+- 保护端点：所有 `/api/sop`、`/api/monitor`、`/api/training`、`/api/stats`、`/api/alerts`、`/api/video/analyze`
+- 默认管理员：admin / admin123（首次启动自动创建）
+
+### 验证
+- 125 个测试全部通过（含 4 个新增认证测试）
+- 前端构建成功
+
+---
+
+# Phase 4 完善计划
+
 ## P0-1: 命中帧确认机制（防误触发） ✅
 
 **问题**: 当前 StateMachine 单次检测匹配即推进状态（PENDING→ACTIVE→COMPLETED），容易因单帧误检导致步骤跳过。

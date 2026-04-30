@@ -11,3 +11,5 @@ sqlalchemy>=2.0.0
 ultralytics>=8.0.0
 mediapipe>=0.10.9
 torch>=2.0.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4

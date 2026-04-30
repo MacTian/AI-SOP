@@ -10,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from backend.models.database import get_db
 from backend.models.record import OperationRecord
+from backend.api.auth import get_current_user
 
-router = APIRouter(prefix="/api/monitor", tags=["Monitor"])
+router = APIRouter(prefix="/api/monitor", tags=["Monitor"], dependencies=[Depends(get_current_user)])
 
 # These will be set by main.py after engine initialization
 _state_machine = None

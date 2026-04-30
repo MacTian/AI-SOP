@@ -115,23 +115,26 @@ sop-monitor/
 │   │   ├── session.py              # 训练录像会话
 │   │   └── analyzer.py             # 步骤自动识别算法
 │   ├── api/
+│   │   ├── auth.py                 # JWT 认证（登录 + 用户信息）
 │   │   ├── ws.py                   # WebSocket 实时推送
 │   │   ├── sop.py                  # SOP REST API + 模板
 │   │   ├── monitor.py              # 监控数据 + 记录查询 + CSV 导出 + 候选
-│   │   ├── video.py                # MJPEG 视频流 + 截图服务
+│   │   ├── video.py                # MJPEG 视频流 + 截图服务 + 多摄像头
 │   │   ├── video_analysis.py       # 视频文件上传分析
 │   │   ├── alert_config.py         # 告警规则 CRUD
 │   │   ├── stats.py                # 统计数据 API（ECharts 数据源）
 │   │   └── training.py             # 训练 API（录像 + LSTM 训练）
 │   └── models/
-│       ├── database.py             # SQLite 初始化 + 自动迁移
-│       └── record.py               # OperationRecord ORM（含 screenshot_path）
+│       ├── database.py             # SQLite 初始化 + 自动迁移 + 种子管理员
+│       ├── record.py               # OperationRecord ORM（含 screenshot_path）
+│       └── user.py                 # User ORM（username, hashed_password, role）
 ├── frontend/src/
 │   ├── views/
 │   │   ├── Dashboard.vue           # 主监控（视频 + 进度 + 告警 + Top3 + 视频分析）
 │   │   ├── SopEditor.vue           # SOP 编辑页
 │   │   ├── History.vue             # 历史记录（截图查看 + CSV 导出）
-│   │   └── Training.vue            # 训练页（录像 + LSTM 训练）
+│   │   ├── Training.vue            # 训练页（录像 + LSTM 训练）
+│   │   └── Login.vue               # 登录页面
 │   ├── components/
 │   │   ├── VideoStream.vue         # 视频流组件
 │   │   ├── SopProgress.vue         # SOP 进度 + 命中帧进度
@@ -140,8 +143,11 @@ sop-monitor/
 │   │   ├── StatsChart.vue          # ECharts 统计图表
 │   │   ├── StepEditor.vue          # 拖拽步骤编辑器
 │   │   └── TemplateSelector.vue    # 模板选择弹窗
+│   ├── api/http.js                 # Axios 实例 + JWT 拦截器
 │   ├── composables/useWebSocket.js # 自动重连 WebSocket
-│   └── stores/monitor.js           # Pinia 状态管理
+│   └── stores/
+│       ├── monitor.js              # Pinia 监控状态
+│       └── auth.js                 # Pinia 认证状态
 ├── sop_definitions/
 │   ├── example_assembly.yaml       # 示例 SOP
 │   └── templates/                  # 4 个预置模板
@@ -172,6 +178,12 @@ steps:
 ```
 
 ## API 接口
+
+### 认证
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/auth/login` | 登录（form-data: username, password） |
+| GET | `/api/auth/me` | 获取当前用户信息 |
 
 ### SOP 管理
 | 方法 | 路径 | 说明 |
@@ -234,6 +246,9 @@ steps:
 | `SOP_DEFAULT_CONFIRM_FRAMES` | 3 | 默认命中帧确认数 |
 | `SOP_STRICT_ORDER` | false | 严格顺序模式（禁止跳步） |
 | `SOP_ALERT_COOLDOWN` | 30 | 告警去重冷却（秒） |
+| `SOP_SECRET_KEY` | sop-monitor-secret-key... | JWT 签名密钥（生产环境请修改） |
+| `SOP_TOKEN_EXPIRE_MINUTES` | 480 | Token 有效期（分钟） |
+| `SOP_DEFAULT_ADMIN_PASSWORD` | admin123 | 默认管理员密码 |
 
 ## 测试
 
@@ -242,7 +257,17 @@ cd /home/mac/sop-monitor
 python3 -m pytest tests/ -v
 ```
 
-121 个测试覆盖：SOP schema、状态机（含命中帧确认 + 严格顺序）、规则引擎、告警管理、检测器、SOP 管理、训练功能、LSTM 分类器、多摄像头、全部 API 端点。
+125 个测试覆盖：SOP schema、状态机（含命中帧确认 + 严格顺序）、规则引擎、告警管理、检测器、SOP 管理、训练功能、LSTM 分类器、多摄像头、JWT 认证、全部 API 端点。
+
+## 默认账户
+
+首次启动自动创建管理员账户：
+
+| 用户名 | 密码 | 角色 |
+|--------|------|------|
+| admin | admin123 | admin |
+
+生产环境请通过 `SOP_DEFAULT_ADMIN_PASSWORD` 环境变量修改密码，并设置 `SOP_SECRET_KEY` 为随机密钥。
 
 ## 运行流程
 

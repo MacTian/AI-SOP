@@ -44,7 +44,7 @@
 <script setup>
 import { ref, onMounted, watch, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import axios from 'axios'
+import http from '../api/http'
 
 const props = defineProps({
   refreshKey: { type: Number, default: 0 },
@@ -62,9 +62,9 @@ let statusInstance = null
 async function fetchData() {
   try {
     const [summaryRes, timelineRes, statsRes] = await Promise.all([
-      axios.get('/api/stats/summary'),
-      axios.get('/api/stats/timeline', { params: { minutes: timeRange.value } }),
-      axios.get('/api/stats/detections', { params: { minutes: timeRange.value } }),
+      http.get('/api/stats/summary'),
+      http.get('/api/stats/timeline', { params: { minutes: timeRange.value } }),
+      http.get('/api/stats/detections', { params: { minutes: timeRange.value } }),
     ])
 
     summary.value = summaryRes.data
