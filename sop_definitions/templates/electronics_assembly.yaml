@@ -14,6 +14,7 @@ steps:
       expected_objects: ["person", "board"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3
 
   - step_id: place_components
     name: "放置元件"
@@ -25,6 +26,7 @@ steps:
       expected_objects: ["person", "board"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3
 
   - step_id: soldering
     name: "焊接"
@@ -36,6 +38,7 @@ steps:
       expected_objects: ["person"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3
 
   - step_id: visual_inspection
     name: "目视检查"
@@ -47,6 +50,7 @@ steps:
       expected_objects: ["person"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3
 
   - step_id: functional_test
     name: "功能测试"
@@ -58,3 +62,4 @@ steps:
       expected_objects: ["person", "board"]
       min_confidence: 0.5
       required_count: 1
+      confirm_frames: 3

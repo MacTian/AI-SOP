@@ -2,6 +2,9 @@
 
 import asyncio
 import logging
+import os
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -13,6 +16,8 @@ router = APIRouter(tags=["Video"])
 _capture = None
 _preprocessor = None
 _inference_engine = None
+
+SCREENSHOTS_DIR = Path(__file__).parent.parent.parent / "screenshots"
 
 
 def set_capture(capture):
@@ -104,3 +109,47 @@ async def video_snapshot():
 
     jpeg_bytes = _preprocessor.to_jpeg(frame) if _preprocessor else b""
     return Response(content=jpeg_bytes, media_type="image/jpeg")
+
+
+def save_screenshot(sop_id: str, step_id: str, event_status: str) -> str | None:
+    """Save the current annotated frame as a screenshot.
+
+    Returns the relative file path if saved, None otherwise.
+    """
+    if _inference_engine is None:
+        return None
+
+    frame = _inference_engine.get_annotated_frame()
+    if frame is None:
+        return None
+
+    try:
+        SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"{sop_id}_{step_id}_{event_status}_{ts}.jpg"
+        filepath = SCREENSHOTS_DIR / filename
+
+        if _preprocessor:
+            jpeg_bytes = _preprocessor.to_jpeg(frame)
+        else:
+            import cv2
+            _, buf = cv2.imencode(".jpg", frame)
+            jpeg_bytes = buf.tobytes()
+
+        filepath.write_bytes(jpeg_bytes)
+        logger.info(f"Screenshot saved: {filepath}")
+        return str(filepath)
+    except Exception as e:
+        logger.error(f"Failed to save screenshot: {e}")
+        return None
+
+
+@router.get("/screenshots/{filename}")
+async def get_screenshot(filename: str):
+    """Serve a saved screenshot image."""
+    from fastapi.responses import Response
+
+    filepath = SCREENSHOTS_DIR / filename
+    if not filepath.exists():
+        return {"error": "Screenshot not found"}
+    return Response(content=filepath.read_bytes(), media_type="image/jpeg")

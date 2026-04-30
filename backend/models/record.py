@@ -18,4 +18,5 @@ class OperationRecord(Base):
     status = Column(String, nullable=False)  # detected, completed, skipped, error
     confidence = Column(Float, default=0.0)
     details = Column(JSON, default=dict)
+    screenshot_path = Column(String, nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)

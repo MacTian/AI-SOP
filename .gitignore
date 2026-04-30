@@ -25,3 +25,6 @@ Thumbs.db
 # Test
 .pytest_cache/
 .coverage
+
+# Screenshots (runtime generated)
+screenshots/

@@ -4,13 +4,35 @@ AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLOv8 �
 
 ## 功能特性
 
+### 核心能力
 - **实时视频流** — MJPEG 摄像头画面，叠加 YOLO 检测框
 - **SOP 状态机** — 自动跟踪 SOP 步骤进度，支持超时检测
+- **命中帧确认** — 连续 N 帧检测到目标才确认步骤完成，防止单帧误触发
 - **规则引擎** — 可配置的检测规则（目标类型、置信度、数量要求）
 - **告警系统** — 多级告警（info/warning/error/critical），支持升级机制和声音提示
+
+### AI 识别
+- **YOLOv8 目标检测** — 实时检测 80 类物体，支持 mock 模式
+- **MediaPipe 手部关键点** — 提取 21 个手部关键点 × 2 只手（126 维特征）
+- **LSTM 时序分类器** — 基于 YOLO + 手部特征的时序动作识别
+- **多尺度窗口投票** — 多窗口长度预测融合（16/32/48 帧），降低识别抖动
+- **Top3 候选展示** — Dashboard 实时显示最可能的 3 个步骤及置信度
+
+### 数据管理
+- **自动截图归档** — 步骤完成时自动保存标注帧截图
+- **操作记录** — SQLite 存储所有检测事件，支持筛选查询
+- **CSV 导出** — 一键导出操作记录为 CSV 文件
 - **数据可视化** — ECharts 图表：检测时序、状态分布、完成率统计
-- **WebSocket 实时推送** — 前端自动刷新进度和告警
-- **SOP 管理** — YAML 格式定义，REST API CRUD，前端可视化编辑
+
+### SOP 管理
+- **SOP 模板库** — 4 个预置模板（电子组装、质量检测、包装、设备操作）
+- **SOP 编辑器** — 前端可视化创建/编辑 SOP
+- **训练功能** — 录像 → 自动分析步骤 → 手动优化 → 保存为 SOP
+- **视频文件分析** — 上传视频文件离线分析 SOP 合规性
+
+### 实时通信
+- **WebSocket 推送** — 前端自动刷新进度、告警、候选步骤
+- **全局 Toast 通知** — 告警弹窗 + Web Audio 声音提示
 
 ## 系统要求
 
@@ -18,7 +40,7 @@ AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLOv8 �
 |------|------|
 | Python | 3.10+ |
 | Node.js | 18+ |
-| 摄像头 | USB 摄像头（/dev/video0） |
+| 摄像头 | USB 摄像头（/dev/video0），或使用 mock 模式 |
 | 操作系统 | Ubuntu 22.04 |
 | GPU | 可选（有 CUDA 则自动使用 GPU 推理） |
 
@@ -29,7 +51,7 @@ AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLOv8 �
 ```bash
 # Python 依赖
 pip install fastapi uvicorn opencv-python numpy pydantic pydantic-settings \
-    aiofiles python-multipart pyyaml sqlalchemy ultralytics
+    aiofiles python-multipart pyyaml sqlalchemy ultralytics mediapipe torch
 
 # Node.js 依赖（需先安装 nvm）
 source ~/.nvm/nvm.sh && nvm use 18
@@ -61,59 +83,66 @@ cd frontend && npm install
 ```
 sop-monitor/
 ├── backend/
-│   ├── main.py                 # FastAPI 入口，生命周期管理
-│   ├── config.py               # Pydantic Settings 配置
+│   ├── main.py                     # FastAPI 入口，生命周期管理
+│   ├── config.py                   # Pydantic Settings 配置
 │   ├── camera/
-│   │   ├── capture.py          # OpenCV 摄像头采集线程
-│   │   └── preprocessor.py     # 图像预处理（resize, ROI）
+│   │   ├── capture.py              # OpenCV 摄像头采集线程
+│   │   └── preprocessor.py         # 图像预处理（resize, ROI, JPEG）
 │   ├── inference/
-│   │   ├── detector.py         # YOLOv8 检测器（支持 mock fallback）
-│   │   └── engine.py           # 推理引擎（采集→预处理→检测→标注）
+│   │   ├── detector.py             # YOLOv8 检测器（支持 mock fallback）
+│   │   ├── engine.py               # 推理引擎（采集→预处理→检测→标注）
+│   │   ├── hand_extractor.py       # MediaPipe 手部关键点提取
+│   │   ├── feature_fusion.py       # YOLO + 手部特征融合
+│   │   ├── lstm_classifier.py      # LSTM 分类器 + 多尺度投票
+│   │   ├── lstm_trainer.py         # LSTM 模型训练器
+│   │   ├── mock_data.py            # 合成训练数据生成
+│   │   └── models/
+│   │       └── hand_landmarker.task # MediaPipe 手部检测模型
 │   ├── extractor/
-│   │   ├── event.py            # SopEvent 数据类
-│   │   └── rule_engine.py      # 检测结果→SOP 步骤事件映射
+│   │   ├── event.py                # SopEvent 数据类
+│   │   └── rule_engine.py          # 检测结果→SOP 步骤事件映射
 │   ├── sop/
-│   │   ├── schema.py           # SOP Pydantic 模型定义
-│   │   ├── state_machine.py    # SOP 状态机引擎
-│   │   └── sop_manager.py      # SOP YAML 文件 CRUD
+│   │   ├── schema.py               # SOP Pydantic 模型（含 confirm_frames）
+│   │   ├── state_machine.py        # SOP 状态机（命中帧确认机制）
+│   │   └── sop_manager.py          # SOP YAML 文件 CRUD
 │   ├── alert/
-│   │   └── manager.py          # 告警管理（去重、升级、规则配置）
+│   │   └── manager.py              # 告警管理（去重、升级、规则配置）
+│   ├── training/
+│   │   ├── session.py              # 训练录像会话
+│   │   └── analyzer.py             # 步骤自动识别算法
 │   ├── api/
-│   │   ├── ws.py               # WebSocket 实时推送
-│   │   ├── sop.py              # SOP REST API
-│   │   ├── monitor.py          # 监控数据 + 操作记录查询
-│   │   ├── video.py            # MJPEG 视频流 + 截图
-│   │   ├── alert_config.py     # 告警规则 CRUD
-│   │   └── stats.py            # 统计数据 API（ECharts 数据源）
+│   │   ├── ws.py                   # WebSocket 实时推送
+│   │   ├── sop.py                  # SOP REST API + 模板
+│   │   ├── monitor.py              # 监控数据 + 记录查询 + CSV 导出 + 候选
+│   │   ├── video.py                # MJPEG 视频流 + 截图服务
+│   │   ├── video_analysis.py       # 视频文件上传分析
+│   │   ├── alert_config.py         # 告警规则 CRUD
+│   │   ├── stats.py                # 统计数据 API（ECharts 数据源）
+│   │   └── training.py             # 训练 API（录像 + LSTM 训练）
 │   └── models/
-│       ├── database.py         # SQLite 初始化
-│       └── record.py           # OperationRecord ORM
-├── frontend/
-│   ├── src/
-│   │   ├── views/
-│   │   │   ├── Dashboard.vue   # 主监控面板
-│   │   │   ├── SopEditor.vue   # SOP 编辑页
-│   │   │   └── History.vue     # 历史记录页
-│   │   ├── components/
-│   │   │   ├── VideoStream.vue # 视频流组件
-│   │   │   ├── SopProgress.vue # SOP 进度组件
-│   │   │   ├── AlertPanel.vue  # 告警面板
-│   │   │   ├── AlertToast.vue  # 全局 toast 弹窗 + 声音
-│   │   │   └── StatsChart.vue  # ECharts 统计图表
-│   │   ├── composables/
-│   │   │   └── useWebSocket.js # 自动重连 WebSocket
-│   │   ├── stores/
-│   │   │   └── monitor.js      # Pinia 状态管理
-│   │   └── router/
-│   │       └── index.js        # Vue Router
-│   └── vite.config.js          # Vite 配置（含 API 代理）
+│       ├── database.py             # SQLite 初始化 + 自动迁移
+│       └── record.py               # OperationRecord ORM（含 screenshot_path）
+├── frontend/src/
+│   ├── views/
+│   │   ├── Dashboard.vue           # 主监控（视频 + 进度 + 告警 + Top3 + 视频分析）
+│   │   ├── SopEditor.vue           # SOP 编辑页
+│   │   ├── History.vue             # 历史记录（截图查看 + CSV 导出）
+│   │   └── Training.vue            # 训练页（录像 + LSTM 训练）
+│   ├── components/
+│   │   ├── VideoStream.vue         # 视频流组件
+│   │   ├── SopProgress.vue         # SOP 进度 + 命中帧进度
+│   │   ├── AlertPanel.vue          # 告警面板
+│   │   ├── AlertToast.vue          # 全局 toast + 声音
+│   │   ├── StatsChart.vue          # ECharts 统计图表
+│   │   ├── StepEditor.vue          # 拖拽步骤编辑器
+│   │   └── TemplateSelector.vue    # 模板选择弹窗
+│   ├── composables/useWebSocket.js # 自动重连 WebSocket
+│   └── stores/monitor.js           # Pinia 状态管理
 ├── sop_definitions/
-│   └── example_assembly.yaml   # 示例 SOP（5 步 PCB 组装）
-├── scripts/
-│   ├── run_backend.sh
-│   ├── run_frontend.sh
-│   └── run_all.sh
-└── tests/                      # 65 个测试用例
+│   ├── example_assembly.yaml       # 示例 SOP
+│   └── templates/                  # 4 个预置模板
+├── tests/                          # 108 个测试用例
+└── scripts/                        # 启动脚本
 ```
 
 ## SOP 定义文件
@@ -123,98 +152,63 @@ SOP 使用 YAML 格式定义，存放在 `sop_definitions/` 目录下：
 ```yaml
 sop_id: example_assembly
 name: "PCB Assembly Example"
-version: "1.0"
-description: "示例 PCB 组装流程"
-max_total_duration: 1800
-
 steps:
   - step_id: step_1
     name: "拿起 PCB 板"
     order: 0
-    estimated_duration: 15    # 预计耗时（秒）
-    timeout: 60               # 超时时间（秒）
+    timeout: 60
     rule:
-      expected_objects: ["board", "hand"]   # 需要检测到的目标
-      min_confidence: 0.6                   # 最低置信度
-      required_count: 1                     # 最少检测数量
-
-  - step_id: step_2
-    name: "涂抹焊锡膏"
-    order: 1
-    timeout: 120
-    rule:
-      expected_objects: ["solder", "board"]
-      min_confidence: 0.5
+      expected_objects: ["board", "hand"]
+      min_confidence: 0.6
       required_count: 1
+      confirm_frames: 3    # 连续 3 帧确认才完成
 ```
-
-### 支持的检测目标（YOLOv8 默认 80 类）
-
-常用目标：`person`, `hand`, `bottle`, `cup`, `knife`, `scissors`,
-`book`, `cell phone`, `laptop`, `mouse`, `keyboard` 等。
-
-可通过自定义训练模型扩展检测类别。
 
 ## API 接口
 
 ### SOP 管理
-
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/sop/list` | 列出所有 SOP |
 | GET | `/api/sop/{sop_id}` | 获取 SOP 详情 |
 | POST | `/api/sop/` | 创建/更新 SOP |
 | DELETE | `/api/sop/{sop_id}` | 删除 SOP |
+| GET | `/api/sop/templates/list` | 列出模板 |
+| POST | `/api/sop/templates/{id}/use` | 从模板创建 SOP |
 
 ### 监控数据
-
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/monitor/status` | 当前所有活跃 SOP 状态 |
-| GET | `/api/monitor/sop/{sop_id}/state` | 单个 SOP 实例状态 |
+| GET | `/api/monitor/detection/candidates` | Top3 候选步骤 |
+| GET | `/api/monitor/records` | 操作记录查询 |
+| GET | `/api/monitor/records/export` | CSV 导出 |
 | GET | `/api/monitor/alerts` | 最近告警列表 |
-| POST | `/api/monitor/alerts/{id}/acknowledge` | 确认告警 |
-| GET | `/api/monitor/records?limit=100&sop_id=xxx` | 操作记录查询 |
 
-### 告警配置
-
+### 视频
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/alerts/rules` | 获取所有告警规则 |
-| POST | `/api/alerts/rules` | 创建告警规则 |
-| DELETE | `/api/alerts/rules/{sop_id}/{step_id}` | 删除规则 |
-| POST | `/api/alerts/acknowledge-all` | 确认所有告警 |
+| GET | `/video/stream` | MJPEG 视频流 |
+| GET | `/video/snapshot` | 单帧 JPEG 截图 |
+| GET | `/video/screenshots/{filename}` | 获取截图 |
+| POST | `/api/video/analyze` | 上传视频文件分析 |
 
-### 统计数据
+### 训练
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/training/start` | 开始训练录像 |
+| POST | `/api/training/stop` | 停止录像 + 分析 |
+| POST | `/api/training/save` | 保存为 SOP |
+| POST | `/api/training/lstm/train` | 训练 LSTM 模型 |
+| GET | `/api/training/lstm/status` | LSTM 训练状态 |
 
+### 统计 & 告警
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/stats/summary` | 总体统计摘要 |
-| GET | `/api/stats/detections?minutes=60` | 检测事件统计 |
-| GET | `/api/stats/timeline?minutes=60&bucket_seconds=60` | 时序数据 |
-| GET | `/api/stats/sop/{sop_id}/completion` | SOP 完成率 |
-
-### 视频流
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/video/stream` | MJPEG 视频流（可直接用于 `<img src>`） |
-| GET | `/video/snapshot` | 单帧 JPEG 截图 |
-
-### WebSocket
-
-连接 `ws://localhost:8000/ws`，接收 JSON 消息：
-
-```json
-// 心跳
-{"type": "heartbeat", "connections": 2, "timestamp": "..."}
-
-// SOP 事件
-{"type": "sop_event", "payload": {"sop_id": "...", "step_id": "...", "status": "detected", ...}}
-
-// 告警
-{"type": "alert", "payload": {"alert_id": "...", "level": "warning", "message": "..."}}
-```
+| GET | `/api/stats/timeline` | 时序数据 |
+| GET | `/api/alerts/rules` | 告警规则 |
+| POST | `/api/alerts/rules` | 创建告警规则 |
 
 ## 配置项
 
@@ -224,13 +218,10 @@ steps:
 |------|--------|------|
 | `SOP_CAMERA_DEVICE` | 0 | 摄像头设备号 |
 | `SOP_CAMERA_FPS` | 15 | 采集帧率 |
-| `SOP_CAMERA_WIDTH` | 640 | 画面宽度 |
-| `SOP_CAMERA_HEIGHT` | 480 | 画面高度 |
 | `SOP_MODEL_PATH` | models/yolov8n.pt | YOLO 模型路径 |
 | `SOP_CONFIDENCE_THRESHOLD` | 0.5 | 检测置信度阈值 |
 | `SOP_INFERENCE_INTERVAL` | 0.5 | 推理间隔（秒） |
-| `SOP_SOP_DIR` | sop_definitions/ | SOP 定义目录 |
-| `SOP_DATABASE_URL` | sqlite:///./sop_monitor.db | 数据库连接 |
+| `SOP_DEFAULT_CONFIRM_FRAMES` | 3 | 默认命中帧确认数 |
 | `SOP_ALERT_COOLDOWN` | 30 | 告警去重冷却（秒） |
 
 ## 测试
@@ -240,25 +231,18 @@ cd /home/mac/sop-monitor
 python3 -m pytest tests/ -v
 ```
 
-65 个测试覆盖：SOP schema、状态机、规则引擎、告警管理、检测器、SOP 管理、全部 API 端点。
+108 个测试覆盖：SOP schema、状态机（含命中帧确认）、规则引擎、告警管理、检测器、SOP 管理、训练功能、LSTM 分类器、全部 API 端点。
 
 ## 运行流程
 
 ```
-摄像头 → 采集线程 → 预处理 → YOLOv8 检测 → 规则引擎 → 状态机 → 告警管理
-                                    ↓                              ↓
-                              标注帧视频流                    数据库记录
-                                    ↓                              ↓
-                              MJPEG 推送                   WebSocket 广播
+摄像头 → 采集线程 → 预处理 → YOLOv8 检测 → 规则引擎 → 状态机（命中帧确认）→ 告警管理
+                                    ↓                                           ↓
+                              MediaPipe 手部                               自动截图归档
+                                    ↓                                           ↓
+                            特征融合 → LSTM 分类                             数据库记录
+                                    ↓                                           ↓
+                            Top3 候选计算                                  WebSocket 广播
+                                    ↓                                           ↓
+                              Dashboard 显示                              ECharts 图表
 ```
-
-## 常见问题
-
-**Q: 没有摄像头怎么测试？**
-系统会自动进入 API-only 模式，所有 REST API 正常工作，视频流返回空。检测器默认使用 mock 模式返回模拟数据。
-
-**Q: 如何使用自定义 YOLO 模型？**
-将 `.pt` 文件放到项目目录，在 `.env` 中设置 `SOP_MODEL_PATH=path/to/model.pt`，重启后端即可。
-
-**Q: 前端页面空白？**
-确认后端已启动（:8000），Vite 代理配置会自动转发 `/api` 和 `/video` 请求到后端。

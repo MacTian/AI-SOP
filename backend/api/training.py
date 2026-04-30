@@ -9,6 +9,7 @@ router = APIRouter(prefix="/api/training", tags=["Training"])
 _session = None
 _analyzer = None
 _sop_manager = None
+_lstm_trainer = None
 
 
 def set_session(session):
@@ -24,6 +25,11 @@ def set_analyzer(analyzer):
 def set_sop_manager(manager):
     global _sop_manager
     _sop_manager = manager
+
+
+def set_lstm_trainer(trainer):
+    global _lstm_trainer
+    _lstm_trainer = trainer
 
 
 class TrainingStartRequest(BaseModel):
@@ -242,3 +248,36 @@ async def reset_training():
         _session.reset()
     _analyzed_steps = []
     return {"status": "reset"}
+
+
+class LstmTrainRequest(BaseModel):
+    num_classes: int = 5
+    epochs: int = 30
+    hidden_size: int = 128
+
+
+@router.post("/lstm/train")
+async def train_lstm(req: LstmTrainRequest):
+    """Train LSTM step classifier on synthetic data."""
+    if _lstm_trainer is None:
+        return {"error": "LSTM trainer not initialized"}
+
+    if _lstm_trainer.is_training:
+        return {"error": "Training already in progress"}
+
+    # Update trainer params
+    _lstm_trainer.num_classes = req.num_classes
+    _lstm_trainer.epochs = req.epochs
+    _lstm_trainer.hidden_size = req.hidden_size
+
+    # Run training synchronously (for now)
+    result = _lstm_trainer.train()
+    return result
+
+
+@router.get("/lstm/status")
+async def lstm_status():
+    """Get LSTM training status."""
+    if _lstm_trainer is None:
+        return {"status": "not_initialized"}
+    return _lstm_trainer.get_status()

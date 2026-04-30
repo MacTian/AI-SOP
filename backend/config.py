@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Alert
     alert_cooldown: int = 30  # seconds between duplicate alerts
 
+    # State machine
+    default_confirm_frames: int = 3  # consecutive hits needed to confirm step
+
     # CORS
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
