@@ -5,10 +5,12 @@ import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File
+
+from backend.api.auth import get_current_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/video", tags=["Video Analysis"])
+router = APIRouter(prefix="/api/video", tags=["Video Analysis"], dependencies=[Depends(get_current_user)])
 
 # Will be set by main.py
 _detector = None

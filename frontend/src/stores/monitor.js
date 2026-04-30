@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, reactive } from 'vue'
-import axios from 'axios'
+import http from '../api/http'
 
 export const useMonitorStore = defineStore('monitor', () => {
   // State
@@ -46,37 +46,37 @@ export const useMonitorStore = defineStore('monitor', () => {
 
   // REST API calls
   async function fetchSopList() {
-    const { data } = await axios.get('/api/sop/list')
+    const { data } = await http.get('/api/sop/list')
     sopList.value = data.sops
   }
 
   async function fetchSopDetail(sopId) {
-    const { data } = await axios.get(`/api/sop/${sopId}`)
+    const { data } = await http.get(`/api/sop/${sopId}`)
     return data
   }
 
   async function saveSop(sopData) {
-    await axios.post('/api/sop/', sopData)
+    await http.post('/api/sop/', sopData)
     await fetchSopList()
   }
 
   async function deleteSop(sopId) {
-    await axios.delete(`/api/sop/${sopId}`)
+    await http.delete(`/api/sop/${sopId}`)
     await fetchSopList()
   }
 
   async function fetchStatus() {
-    const { data } = await axios.get('/api/monitor/status')
+    const { data } = await http.get('/api/monitor/status')
     activeSops.value = data.active_sops || []
   }
 
   async function fetchAlerts() {
-    const { data } = await axios.get('/api/monitor/alerts')
+    const { data } = await http.get('/api/monitor/alerts')
     alerts.value = data.alerts || []
   }
 
   async function fetchRecords(limit = 100) {
-    const { data } = await axios.get('/api/monitor/records', { params: { limit } })
+    const { data } = await http.get('/api/monitor/records', { params: { limit } })
     return data.records || []
   }
 

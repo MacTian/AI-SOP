@@ -13,6 +13,15 @@ def client():
 
 
 @pytest.fixture
+def auth_headers(client):
+    """Get auth headers with a valid JWT token for the default admin."""
+    resp = client.post("/api/auth/login", data={"username": "admin", "password": "admin123"})
+    assert resp.status_code == 200
+    token = resp.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
 def sample_sop_data():
     """Sample SOP creation payload."""
     return {

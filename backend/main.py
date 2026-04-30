@@ -38,6 +38,7 @@ from backend.api import alert_config as alert_config_api
 from backend.api import training as training_api
 from backend.api.video_analysis import router as video_analysis_router
 from backend.api import video_analysis as video_analysis_api
+from backend.api.auth import router as auth_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -298,6 +299,7 @@ app.add_middleware(
 )
 
 # Register routers
+app.include_router(auth_router)
 app.include_router(ws_router)
 app.include_router(sop_router)
 app.include_router(monitor_api.router)

@@ -2,14 +2,15 @@
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.config import settings
 from backend.sop.schema import SopDefinition, SopStep, StepRule
 from backend.sop.sop_manager import SopManager
+from backend.api.auth import get_current_user
 
-router = APIRouter(prefix="/api/sop", tags=["SOP"])
+router = APIRouter(prefix="/api/sop", tags=["SOP"], dependencies=[Depends(get_current_user)])
 manager = SopManager()
 
 # Template manager points to templates subdirectory

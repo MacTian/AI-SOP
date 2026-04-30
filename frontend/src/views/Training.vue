@@ -231,7 +231,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import axios from 'axios'
+import http from '../api/http'
 import StepEditor from '../components/StepEditor.vue'
 
 const router = useRouter()
@@ -257,7 +257,7 @@ let statusInterval = null
 async function startTraining() {
   if (!sopName.value.trim()) return
   try {
-    await axios.post('/api/training/start', { sop_name: sopName.value })
+    await http.post('/api/training/start', { sop_name: sopName.value })
     trainingStatus.value = { status: 'recording', frame_count: 0, duration: 0 }
     timer.value = 0
     timerInterval = setInterval(() => { timer.value++ }, 1000)
@@ -269,7 +269,7 @@ async function startTraining() {
 
 async function stopTraining() {
   try {
-    const { data } = await axios.post('/api/training/stop')
+    const { data } = await http.post('/api/training/stop')
     if (timerInterval) clearInterval(timerInterval)
     analysisResult.value = data
     trainingStatus.value = { ...trainingStatus.value, status: 'ready' }
@@ -282,7 +282,7 @@ async function stopTraining() {
 
 async function resetTraining() {
   try {
-    await axios.post('/api/training/reset')
+    await http.post('/api/training/reset')
     trainingStatus.value = { status: 'idle', frame_count: 0, duration: 0 }
     steps.value = []
     analysisResult.value = null
@@ -294,14 +294,14 @@ async function resetTraining() {
 
 async function fetchStatus() {
   try {
-    const { data } = await axios.get('/api/training/status')
+    const { data } = await http.get('/api/training/status')
     trainingStatus.value = data
   } catch {}
 }
 
 async function fetchResult() {
   try {
-    const { data } = await axios.get('/api/training/result')
+    const { data } = await http.get('/api/training/result')
     steps.value = data.steps || []
     saveForm.value.name = sopName.value
     saveForm.value.sop_id = sopName.value.toLowerCase().replace(/\s+/g, '_')
@@ -328,7 +328,7 @@ async function deleteStep(stepId) {
 
 async function reorderSteps(orderedIds) {
   try {
-    await axios.post('/api/training/step/reorder', orderedIds)
+    await http.post('/api/training/step/reorder', orderedIds)
     await fetchResult()
   } catch (e) {
     console.error('Reorder failed:', e)
@@ -337,7 +337,7 @@ async function reorderSteps(orderedIds) {
 
 async function saveSop() {
   try {
-    await axios.post('/api/training/save', saveForm.value)
+    await http.post('/api/training/save', saveForm.value)
     showSaveDialog.value = false
     steps.value = []
     trainingStatus.value = { status: 'idle', frame_count: 0, duration: 0 }
@@ -356,7 +356,7 @@ async function trainLstm() {
   lstmResult.value = null
   lstmStatus.value = { is_training: true, history: [] }
   try {
-    const { data } = await axios.post('/api/training/lstm/train', lstmForm.value)
+    const { data } = await http.post('/api/training/lstm/train', lstmForm.value)
     lstmResult.value = data
     lstmStatus.value = { is_training: false, history: data.history || [] }
   } catch (e) {

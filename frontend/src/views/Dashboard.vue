@@ -79,7 +79,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
-import axios from 'axios'
+import http from '../api/http'
 import VideoStream from '../components/VideoStream.vue'
 import SopProgress from '../components/SopProgress.vue'
 import AlertPanel from '../components/AlertPanel.vue'
@@ -111,7 +111,7 @@ watch(data, (msg) => {
 
 async function fetchCandidates() {
   try {
-    const { data } = await axios.get('/api/monitor/detection/candidates')
+    const { data } = await http.get('/api/monitor/detection/candidates')
     candidates.value = data.candidates || []
   } catch {
     // ignore
@@ -128,7 +128,7 @@ async function handleVideoUpload(event) {
   try {
     const formData = new FormData()
     formData.append('file', file)
-    const { data } = await axios.post('/api/video/analyze', formData, {
+    const { data } = await http.post('/api/video/analyze', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 120000,
     })

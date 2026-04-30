@@ -48,7 +48,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import axios from 'axios'
+import http from '../api/http'
 
 const emit = defineEmits(['close', 'created'])
 
@@ -58,7 +58,7 @@ const newName = ref('')
 
 async function fetchTemplates() {
   try {
-    const { data } = await axios.get('/api/sop/templates/list')
+    const { data } = await http.get('/api/sop/templates/list')
     templates.value = data.templates || []
   } catch {}
 }
@@ -72,7 +72,7 @@ async function createFromTemplate() {
   if (!selected.value || !newName.value.trim()) return
   const sopId = newName.value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
   try {
-    await axios.post(`/api/sop/templates/${selected.value.sop_id}/use`, {
+    await http.post(`/api/sop/templates/${selected.value.sop_id}/use`, {
       sop_id: sopId,
       name: newName.value,
     })

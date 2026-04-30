@@ -1,11 +1,12 @@
 """Alert configuration API endpoints."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from backend.alert.manager import AlertRule
+from backend.api.auth import get_current_user
 
-router = APIRouter(prefix="/api/alerts", tags=["Alerts"])
+router = APIRouter(prefix="/api/alerts", tags=["Alerts"], dependencies=[Depends(get_current_user)])
 
 # Will be set by main.py
 _alert_manager = None

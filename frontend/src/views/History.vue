@@ -98,7 +98,7 @@
 
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
+import http from '../api/http'
 import { useMonitorStore } from '../stores/monitor'
 
 const store = useMonitorStore()
@@ -112,7 +112,7 @@ async function fetchRecords() {
   try {
     const params = { limit: 200 }
     if (selectedSop.value) params.sop_id = selectedSop.value
-    const { data } = await axios.get('/api/monitor/records', { params })
+    const { data } = await http.get('/api/monitor/records', { params })
     records.value = data.records || []
   } catch {
     records.value = []

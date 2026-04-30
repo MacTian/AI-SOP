@@ -25,8 +25,11 @@ def get_db():
 
 def init_db():
     """Create all tables defined via Base metadata."""
+    # Import all models so they register with Base
+    from backend.models import user  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _run_migrations()
+    _seed_admin()
 
 
 def _run_migrations():
@@ -45,3 +48,30 @@ def _run_migrations():
                 logger.info("Migration: added screenshot_path column to operation_records")
         except Exception as e:
             logger.debug(f"Migration check skipped: {e}")
+
+
+def _seed_admin():
+    """Create default admin user if no users exist."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    from backend.models.user import User
+    from passlib.context import CryptContext
+
+    db = SessionLocal()
+    try:
+        if db.query(User).count() == 0:
+            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            admin = User(
+                username="admin",
+                hashed_password=pwd_context.hash(settings.default_admin_password),
+                role="admin",
+            )
+            db.add(admin)
+            db.commit()
+            logger.info("Seeded default admin user (admin / admin123)")
+    except Exception as e:
+        db.rollback()
+        logger.debug(f"Admin seed skipped: {e}")
+    finally:
+        db.close()

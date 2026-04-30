@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 
 from backend.models.database import get_db
 from backend.models.record import OperationRecord
+from backend.api.auth import get_current_user
 
-router = APIRouter(prefix="/api/stats", tags=["Statistics"])
+router = APIRouter(prefix="/api/stats", tags=["Statistics"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("/detections")

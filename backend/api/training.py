@@ -1,9 +1,11 @@
 """Training API: start/stop training, get results, save SOP."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/training", tags=["Training"])
+from backend.api.auth import get_current_user
+
+router = APIRouter(prefix="/api/training", tags=["Training"], dependencies=[Depends(get_current_user)])
 
 # Will be set by main.py
 _session = None

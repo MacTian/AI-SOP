@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
+    # Auth
+    secret_key: str = "sop-monitor-secret-key-change-in-production"
+    token_expire_minutes: int = 480  # 8 hours
+    default_admin_password: str = "admin123"
+
     class Config:
         env_file = ".env"
         env_prefix = "SOP_"

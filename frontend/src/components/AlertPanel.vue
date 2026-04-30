@@ -40,7 +40,7 @@
 </template>
 
 <script setup>
-import axios from 'axios'
+import http from '../api/http'
 import { useMonitorStore } from '../stores/monitor'
 
 const store = useMonitorStore()
@@ -61,7 +61,7 @@ function formatTime(ts) {
 }
 
 async function acknowledge(alertId) {
-  await axios.post(`/api/monitor/alerts/${alertId}/acknowledge`)
+  await http.post(`/api/monitor/alerts/${alertId}/acknowledge`)
   const alert = store.alerts.find(a => a.alert_id === alertId)
   if (alert) alert.acknowledged = true
 }
