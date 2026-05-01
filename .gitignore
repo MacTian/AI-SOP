@@ -8,6 +8,7 @@ __pycache__/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+static/
 .vite/
 
 # Models (downloaded at runtime)

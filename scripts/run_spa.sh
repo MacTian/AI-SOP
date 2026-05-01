@@ -1,28 +1,31 @@
 #!/bin/bash
-# Run AI SOP Monitor — SPA Mode (recommended)
-# Builds frontend, then starts backend which serves everything on port 8000.
+# Run AI SOP Monitor in SPA mode:
+#   1. Build frontend → static/
+#   2. Start backend (serves both API + frontend on port 8000)
 #
-# For frontend dev with hot-reload, use run_dev.sh instead.
+# Usage:   ./scripts/run_spa.sh
+# Stop:    Ctrl+C
+# Access:  http://localhost:8000
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$SCRIPT_DIR/..."
+PROJECT_DIR="$SCRIPT_DIR/"
 
 echo "==================================="
 echo "  AI SOP Monitor — SPA Mode"
 echo "==================================="
 
-# Build frontend
+# Step 1: Build frontend
 echo ""
 echo "[1/2] Building frontend..."
 cd "$PROJECT_DIR/frontend"
 npm run build
-echo "  ✓ Built → static/"
+echo "  ✓ Frontend built → static/"
 
-# Start backend
+# Step 2: Start backend
 echo ""
-echo "[2/2] Starting backend (serves API + frontend)..."
+echo "[2/2] Starting backend..."
 cd "$PROJECT_DIR"
 echo ""
 echo "  🌐  http://localhost:8000"
