@@ -1,7 +1,7 @@
 sop_id: example_assembly
 name: "PCB Assembly Example"
-version: "1.0"
-description: "Example PCB assembly SOP with 5 steps"
+version: "1.1"
+description: "Example PCB assembly SOP with 5 steps (COCO-mapped classes)"
 max_total_duration: 1800
 
 steps:
@@ -12,8 +12,10 @@ steps:
     estimated_duration: 15
     timeout: 60
     rule:
+      # "board" maps to book/cell phone/laptop/tv; "hand" maps to person
       expected_objects: ["board", "hand"]
-      min_confidence: 0.6
+      expected_gestures: ["pick_up"]
+      min_confidence: 0.4
       required_count: 1
 
   - step_id: step_2
@@ -23,8 +25,9 @@ steps:
     estimated_duration: 30
     timeout: 120
     rule:
+      # "solder" maps to bottle/cup; "board" maps to book/cell phone
       expected_objects: ["solder", "board"]
-      min_confidence: 0.5
+      min_confidence: 0.4
       required_count: 1
 
   - step_id: step_3
@@ -35,7 +38,7 @@ steps:
     timeout: 180
     rule:
       expected_objects: ["part", "board"]
-      min_confidence: 0.5
+      min_confidence: 0.4
       required_count: 1
 
   - step_id: step_4
@@ -45,8 +48,9 @@ steps:
     estimated_duration: 45
     timeout: 150
     rule:
-      expected_objects: ["solder", "tool"]
-      min_confidence: 0.5
+      # "tool" maps to scissors/knife/bottle/fork/spoon
+      expected_objects: ["tool", "hand"]
+      min_confidence: 0.4
       required_count: 1
 
   - step_id: step_5
@@ -58,5 +62,5 @@ steps:
     is_optional: false
     rule:
       expected_objects: ["board", "person"]
-      min_confidence: 0.5
+      min_confidence: 0.4
       required_count: 1

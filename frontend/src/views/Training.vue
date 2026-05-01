@@ -310,7 +310,7 @@ async function fetchResult() {
 
 async function updateStep(stepId, updates) {
   try {
-    await axios.put(`/api/training/step/${stepId}`, updates)
+    await http.put(`/api/training/step/${stepId}`, updates)
     await fetchResult()
   } catch (e) {
     console.error('Update step failed:', e)
@@ -319,7 +319,7 @@ async function updateStep(stepId, updates) {
 
 async function deleteStep(stepId) {
   try {
-    await axios.delete(`/api/training/step/${stepId}`)
+    await http.delete(`/api/training/step/${stepId}`)
     await fetchResult()
   } catch (e) {
     console.error('Delete step failed:', e)

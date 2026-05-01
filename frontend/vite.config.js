@@ -5,18 +5,24 @@ export default defineConfig({
   plugins: [vue()],
   server: {
     port: 5173,
+    host: '0.0.0.0',
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://172.28.16.1:8000',
         changeOrigin: true,
+        secure: false,
+        timeout: 30000,
       },
       '/video': {
-        target: 'http://localhost:8000',
+        target: 'http://172.28.16.1:8000',
         changeOrigin: true,
+        secure: false,
+        timeout: 30000,
       },
       '/ws': {
-        target: 'ws://localhost:8000',
+        target: 'ws://172.28.16.1:8000',
         ws: true,
+        timeout: 30000,
       },
     },
   },

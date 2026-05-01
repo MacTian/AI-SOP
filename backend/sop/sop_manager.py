@@ -65,8 +65,10 @@ class SopManager:
                     "is_optional": s.is_optional,
                     "rule": {
                         "expected_objects": s.rule.expected_objects,
+                        "expected_gestures": s.rule.expected_gestures,
                         "min_confidence": s.rule.min_confidence,
                         "required_count": s.rule.required_count,
+                        "confirm_frames": s.rule.confirm_frames,
                     },
                 }
                 for s in sop.steps
@@ -100,8 +102,10 @@ class SopManager:
                 is_optional=s.get("is_optional", False),
                 rule=StepRule(
                     expected_objects=rule_data.get("expected_objects", []),
+                    expected_gestures=rule_data.get("expected_gestures", []),
                     min_confidence=rule_data.get("min_confidence", 0.5),
                     required_count=rule_data.get("required_count", 1),
+                    confirm_frames=rule_data.get("confirm_frames", 3),
                 ),
             )
             steps.append(step)
