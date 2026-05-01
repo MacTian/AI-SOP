@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -384,14 +384,18 @@ async def health():
     }
 
 
-# Serve built frontend in Docker mode (static/ directory exists)
+# Serve built frontend as SPA (static/ directory)
 _static_dir = Path(__file__).parent.parent / "static"
 if _static_dir.is_dir():
+    # Serve assets with proper MIME types and caching
     app.mount("/assets", StaticFiles(directory=str(_static_dir / "assets")), name="assets")
 
-    @app.get("/{full_path:path}")
+    @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str):
         """Catch-all: serve frontend files or fall back to index.html for SPA routing."""
+        # Don't intercept API routes
+        if full_path.startswith(("api/", "video/", "ws/", "docs", "openapi", "health", "screenshots/")):
+            raise HTTPException(status_code=404)
         file_path = _static_dir / full_path
         if file_path.is_file():
             from fastapi.responses import FileResponse

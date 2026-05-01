@@ -50,7 +50,7 @@ AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLOv8 �
 | Python | 3.10+ |
 | Node.js | 18+ |
 | 摄像头 | USB 摄像头（/dev/video0），或使用 mock 模式 |
-| 操作系统 | Ubuntu 22.04 |
+| 操作系统 | Windows 10/11 + WSL2 或 Ubuntu 22.04 |
 | GPU | 可选（有 CUDA 则自动使用 GPU 推理） |
 
 ## 快速开始
@@ -70,25 +70,36 @@ cd frontend && npm install
 ### 2. 启动服务
 
 ```bash
-# 方式一：同时启动前后端
-./scripts/run_all.sh
+# 方式一：SPA 模式（推荐，一条命令启动全部）
+./scripts/run_spa.sh
+# → 前端 build → static/ → 后端统一服务
+# → 浏览器打开 http://localhost:8000
 
-# 方式二：分别启动
-./scripts/run_backend.sh    # 后端 → http://localhost:8000
-./scripts/run_frontend.sh   # 前端 → http://localhost:5173
+# 方式二：开发模式（前端热重载 + 后端）
+./scripts/run_dev.sh
+# → 后端 http://localhost:8000 + 前端 http://localhost:5173
 
 # 方式三：Docker 部署
-docker compose up --build    # http://localhost:8000
+docker compose up --build
+# → http://localhost:8000
 ```
 
 ### 3. 访问系统
 
+SPA 模式（推荐）：
+
 | 地址 | 说明 |
 |------|------|
-| http://localhost:5173 | 前端 Dashboard |
+| http://localhost:8000 | 完整应用（前端 + API + WebSocket） |
 | http://localhost:8000/docs | Swagger API 文档 |
 | http://localhost:8000/video/stream | MJPEG 视频流 |
-| ws://localhost:8000/ws | WebSocket 连接 |
+
+开发模式：
+
+| 地址 | 说明 |
+|------|------|
+| http://localhost:5173 | 前端开发服务器（热重载） |
+| http://localhost:8000 | 后端 API |
 
 ## 项目结构
 
