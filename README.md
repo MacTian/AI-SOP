@@ -18,6 +18,12 @@ AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLOv8 �
 - **多尺度窗口投票** — 多窗口长度预测融合（16/32/48 帧），降低识别抖动
 - **Top3 候选展示** — Dashboard 实时显示最可能的 3 个步骤及置信度
 
+### YOLO 数据标注与模型训练
+- **数据标注** — 上传图片，画布绘制边界框，YOLO 自动标注，支持类别管理和 YOLO 格式导出
+- **模型训练** — 上传 ZIP 数据集，配置训练参数，实时监控训练进度和指标（loss/mAP）
+- **国内镜像加速** — YOLO 预训练模型优先从国内镜像（ghfast.top）下载
+- **模型管理** — 训练完成后一键下载模型或设为当前检测模型
+
 ### 数据管理
 - **自动截图归档** — 步骤完成时自动保存标注帧截图
 - **操作记录** — SQLite 存储所有检测事件，支持筛选查询
@@ -124,6 +130,8 @@ sop-monitor/
 │   │   ├── alert_config.py         # 告警规则 CRUD
 │   │   ├── stats.py                # 统计数据 API（ECharts 数据源）
 │   │   └── training.py             # 训练 API（录像 + LSTM 训练）
+│   │   ├── labeling.py             # YOLO 数据标注 API（自动标注）
+│   │   └── yolo_training.py        # YOLO 模型训练 API（数据集 + 训练 + 模型管理）
 │   └── models/
 │       ├── database.py             # SQLite 初始化 + 自动迁移 + 种子管理员
 │       ├── record.py               # OperationRecord ORM（含 screenshot_path）
@@ -134,6 +142,8 @@ sop-monitor/
 │   │   ├── SopEditor.vue           # SOP 编辑页
 │   │   ├── History.vue             # 历史记录（截图查看 + CSV 导出）
 │   │   ├── Training.vue            # 训练页（录像 + LSTM 训练）
+	│   │   ├── Labeling.vue            # YOLO 数据标注（图片上传 + 画布标注 + 自动标注）
+	│   │   ├── ModelTraining.vue       # YOLO 模型训练（数据集上传 + 训练监控 + 模型下载）
 │   │   └── Login.vue               # 登录页面
 │   ├── components/
 │   │   ├── VideoStream.vue         # 视频流组件
@@ -222,6 +232,22 @@ steps:
 | POST | `/api/training/save` | 保存为 SOP |
 | POST | `/api/training/lstm/train` | 训练 LSTM 模型 |
 | GET | `/api/training/lstm/status` | LSTM 训练状态 |
+
+### YOLO 数据标注
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/label/auto` | 单张图片 YOLO 自动标注 |
+| POST | `/api/label/batch` | 批量图片 YOLO 自动标注 |
+
+### YOLO 模型训练
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/training/yolo/dataset/upload` | 上传数据集 ZIP |
+| POST | `/api/training/yolo/start` | 开始 YOLO 训练 |
+| POST | `/api/training/yolo/stop` | 停止训练 |
+| GET | `/api/training/yolo/status` | 训练状态与指标 |
+| GET | `/api/training/yolo/download` | 下载训练好的模型 |
+| POST | `/api/training/yolo/use` | 设为当前检测模型 |
 
 ### 统计 & 告警
 | 方法 | 路径 | 说明 |
