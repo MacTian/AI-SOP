@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class StepRule(BaseModel):
     """Detection rule for a single SOP step."""
     expected_objects: list[str] = Field(default_factory=list)
+    expected_gestures: list[str] = Field(default_factory=list)  # grab, point, pick_up, put_down, open
     min_confidence: float = 0.5
     required_count: int = 1
     confirm_frames: int = 3  # consecutive matching frames needed to confirm step completion

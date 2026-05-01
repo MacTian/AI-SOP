@@ -53,18 +53,22 @@ def _run_migrations():
 def _seed_admin():
     """Create default admin user if no users exist."""
     import logging
+    import bcrypt
+
     logger = logging.getLogger(__name__)
 
     from backend.models.user import User
-    from passlib.context import CryptContext
 
     db = SessionLocal()
     try:
         if db.query(User).count() == 0:
-            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+            hashed = bcrypt.hashpw(
+                settings.default_admin_password.encode("utf-8"),
+                bcrypt.gensalt()
+            ).decode("utf-8")
             admin = User(
                 username="admin",
-                hashed_password=pwd_context.hash(settings.default_admin_password),
+                hashed_password=hashed,
                 role="admin",
             )
             db.add(admin)

@@ -61,6 +61,8 @@ const wsConnected = computed(() => store.wsConnected)
 const navLinks = [
   { path: '/', label: 'Dashboard' },
   { path: '/training', label: 'Training' },
+  { path: '/labeling', label: 'Labeling' },
+  { path: '/model-training', label: 'Model Training' },
   { path: '/sop-editor', label: 'SOP Editor' },
   { path: '/history', label: 'History' },
 ]

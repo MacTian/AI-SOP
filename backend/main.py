@@ -23,6 +23,8 @@ from backend.alert.manager import AlertManager
 from backend.training.session import TrainingSession
 from backend.training.analyzer import StepAnalyzer
 from backend.inference.lstm_trainer import LstmTrainer
+from backend.inference.hand_extractor import HandExtractor
+from backend.inference.gesture_classifier import GestureClassifier
 from backend.models.database import init_db, SessionLocal
 from backend.models.record import OperationRecord
 
@@ -39,6 +41,8 @@ from backend.api import training as training_api
 from backend.api.video_analysis import router as video_analysis_router
 from backend.api import video_analysis as video_analysis_api
 from backend.api.auth import router as auth_router
+from backend.api.labeling import router as labeling_router
+from backend.api.yolo_training import router as yolo_training_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -62,6 +66,7 @@ def _load_sop_rules(sop_mgr: SopManager, rules: RuleEngine):
                     "step_id": step.step_id,
                     "step_name": step.name,
                     "expected_objects": step.rule.expected_objects,
+                    "expected_gestures": step.rule.expected_gestures,
                     "min_confidence": step.rule.min_confidence,
                     "required_count": step.rule.required_count,
                 }
@@ -117,6 +122,15 @@ async def lifespan(app: FastAPI):
     step_analyzer = StepAnalyzer()
     lstm_trainer = LstmTrainer()
 
+    # Hand gesture recognition (graceful fallback if MediaPipe unavailable)
+    hand_extractor = HandExtractor()
+    gesture_classifier = GestureClassifier()
+    try:
+        hand_extractor.load_model()
+        logger.info("Hand gesture recognition enabled")
+    except Exception as e:
+        logger.warning(f"Hand gesture recognition disabled: {e}")
+
     # Load SOP rules into rule engine
     _load_sop_rules(sop_manager, rule_engine)
 
@@ -138,6 +152,10 @@ async def lifespan(app: FastAPI):
     video_analysis_api.set_preprocessor(inference_engine.preprocessor)
     video_analysis_api.set_rule_engine(rule_engine)
     video_analysis_api.set_sop_manager(sop_manager)
+
+    # Wire up labeling API
+    from backend.api.labeling import set_detector
+    set_detector(detector)
 
     # Wire up monitor API for candidate tracking
     monitor_api.set_inference_engine(inference_engine)
@@ -165,13 +183,23 @@ async def lifespan(app: FastAPI):
         if training_session.is_recording:
             training_session.record_frame(result)
 
+        # Hand gesture recognition
+        gesture_results = []
+        try:
+            frame, _ = inference_engine.get_latest_result()
+            if frame is not None and hand_extractor._landmarker is not None:
+                hand_features = hand_extractor.extract(frame)
+                gesture_results = gesture_classifier.classify_both_hands(hand_features)
+        except Exception as e:
+            logger.debug(f"Gesture classification error: {e}")
+
         # Compute candidates + run rule engine in one pass
         all_candidates = []
         sop_ids = list(_sop_cache.keys())
 
         for sop_id in sop_ids:
-            # Rule engine evaluation
-            events = rule_engine.evaluate(sop_id, result)
+            # Rule engine evaluation (with gesture support)
+            events = rule_engine.evaluate(sop_id, result, gesture_results)
 
             # Candidate scoring
             sop = _sop_cache.get(sop_id)
@@ -238,9 +266,35 @@ async def lifespan(app: FastAPI):
                 except RuntimeError:
                     pass  # No event loop running yet
 
-        # Update top-3 candidates
+        # Update top-3 candidates (include gesture info)
+        for candidate in all_candidates:
+            candidate["gestures"] = [
+                {"gesture": g.gesture, "confidence": g.confidence, "hand": g.hand_index}
+                for g in gesture_results
+            ]
         all_candidates.sort(key=lambda c: c["score"], reverse=True)
         monitor_api.update_candidates(all_candidates[:3])
+
+        # Broadcast gesture updates if any detected
+        if gesture_results:
+            try:
+                loop = asyncio.get_event_loop()
+                loop.call_soon_threadsafe(
+                    asyncio.ensure_future,
+                    broadcast_event("gesture", {
+                        "gestures": [
+                            {
+                                "gesture": g.gesture,
+                                "confidence": g.confidence,
+                                "hand": g.hand_index,
+                                "finger_curl": g.finger_curl,
+                            }
+                            for g in gesture_results
+                        ]
+                    }),
+                )
+            except RuntimeError:
+                pass
 
     inference_engine.set_result_callback(on_detection)
 
@@ -308,6 +362,8 @@ app.include_router(video_analysis_router)
 app.include_router(alert_config_router)
 app.include_router(stats_router)
 app.include_router(training_router)
+app.include_router(labeling_router)
+app.include_router(yolo_training_router)
 
 
 @app.get("/")

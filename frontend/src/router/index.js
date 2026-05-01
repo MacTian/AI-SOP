@@ -30,6 +30,18 @@ const routes = [
     component: () => import('../views/Training.vue'),
     meta: { requiresAuth: true },
   },
+  {
+    path: '/labeling',
+    name: 'Labeling',
+    component: () => import('../views/Labeling.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/model-training',
+    name: 'ModelTraining',
+    component: () => import('../views/ModelTraining.vue'),
+    meta: { requiresAuth: true },
+  },
 ]
 
 const router = createRouter({
