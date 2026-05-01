@@ -96,6 +96,8 @@ async def upload_dataset(
     if not data_yaml.exists():
         # Auto-generate data.yaml
         classes = _detect_classes(labels_dir)
+        # Detect if any label file has polygon format (>5 values per line)
+        is_segmentation = _detect_segmentation(labels_dir)
         yaml_content = f"""# Auto-generated data.yaml
 path: {dataset_dir}
 train: images
@@ -103,6 +105,8 @@ val: images
 nc: {len(classes)}
 names: {classes}
 """
+        if is_segmentation:
+            yaml_content += "# Format: segmentation (polygon)\n"
         with open(data_yaml, "w") as f:
             f.write(yaml_content)
 
@@ -116,10 +120,12 @@ names: {classes}
 
 
 def _detect_classes(labels_dir: Path) -> list:
-    """Detect class IDs from label files."""
+    """Detect class IDs from label files (bbox or polygon format)."""
     classes = set()
     if labels_dir.exists():
         for f in labels_dir.rglob("*.txt"):
+            if f.name == "classes.txt":
+                continue
             with open(f) as fh:
                 for line in fh:
                     parts = line.strip().split()
@@ -129,6 +135,24 @@ def _detect_classes(labels_dir: Path) -> list:
                         except ValueError:
                             pass
     return [str(i) for i in sorted(classes)] if classes else ["0"]
+
+
+def _detect_segmentation(labels_dir: Path) -> bool:
+    """Detect if label files contain polygon segmentation data.
+    Polygon lines have > 5 values (class + 3+ coordinate pairs).
+    BBox lines have exactly 5 values (class + cx + cy + w + h).
+    """
+    if not labels_dir.exists():
+        return False
+    for f in labels_dir.rglob("*.txt"):
+        if f.name == "classes.txt":
+            continue
+        with open(f) as fh:
+            for line in fh:
+                parts = line.strip().split()
+                if len(parts) > 5:
+                    return True
+    return False
 
 
 @router.post("/start")

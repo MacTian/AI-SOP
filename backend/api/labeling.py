@@ -41,16 +41,15 @@ async def auto_label(file: UploadFile = File(...)):
 
     detections = []
     for det in results:
-        # Convert from pixel coords to YOLO normalized format
         x1, y1, x2, y2 = det["bbox"]
         detections.append({
             "cls": det["class"],
             "conf": det["confidence"],
+            "type": "box",
             "x": ((x1 + x2) / 2) / w,
             "y": ((y1 + y2) / 2) / h,
             "w": (x2 - x1) / w,
             "h": (y2 - y1) / h,
-            # Also include pixel coords for frontend display
             "x1": x1, "y1": y1, "x2": x2, "y2": y2,
             "img_w": w, "img_h": h,
         })
@@ -81,6 +80,7 @@ async def batch_label(files: list[UploadFile] = File(...)):
                 {
                     "cls": d["class"],
                     "conf": d["confidence"],
+                    "type": "box",
                     "x": ((d["bbox"][0] + d["bbox"][2]) / 2) / w,
                     "y": ((d["bbox"][1] + d["bbox"][3]) / 2) / h,
                     "w": (d["bbox"][2] - d["bbox"][0]) / w,
