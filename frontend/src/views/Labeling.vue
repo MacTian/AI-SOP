@@ -1,235 +1,228 @@
 <template>
-  <div class="space-y-6">
+  <div class="space-y-4">
+    <!-- Header -->
     <div class="flex items-center justify-between">
       <h2 class="text-xl font-semibold">YOLO Data Labeling</h2>
-      <div class="flex items-center space-x-2">
+      <div class="flex items-center space-x-3">
         <span class="text-sm text-gray-500">{{ images.length }} images</span>
         <span class="text-sm text-gray-400">|</span>
         <span class="text-sm text-gray-500">{{ totalLabels }} labels</span>
+        <span class="text-sm text-gray-400">|</span>
+        <span class="text-sm text-gray-500">{{ rectCount }} boxes, {{ polyCount }} polygons</span>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-      <!-- Left: Image List -->
-      <div class="lg:col-span-1 space-y-4">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <!-- Left Sidebar -->
+      <div class="lg:col-span-2 space-y-3">
+        <!-- Drawing Tools -->
+        <div class="bg-white rounded-lg shadow-sm border p-3">
+          <h3 class="font-medium text-sm mb-2">Tools</h3>
+          <div class="grid grid-cols-2 gap-1.5">
+            <button @click="tool = 'rectangle'"
+              class="px-2 py-1.5 text-xs rounded border text-center transition-colors"
+              :class="tool === 'rectangle' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-50'">
+              <span class="block text-base mb-0.5">▭</span>Box
+            </button>
+            <button @click="tool = 'polygon'"
+              class="px-2 py-1.5 text-xs rounded border text-center transition-colors"
+              :class="tool === 'polygon' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-50'">
+              <span class="block text-base mb-0.5">⬠</span>Polygon
+            </button>
+            <button @click="tool = 'select'"
+              class="px-2 py-1.5 text-xs rounded border text-center transition-colors"
+              :class="tool === 'select' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-50'">
+              <span class="block text-base mb-0.5">↖</span>Select
+            </button>
+            <button @click="undoLast" :disabled="!canUndo"
+              class="px-2 py-1.5 text-xs rounded border text-center bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+              <span class="block text-base mb-0.5">↩</span>Undo
+            </button>
+          </div>
+          <p class="text-xs text-gray-400 mt-2 leading-tight">
+            <template v-if="tool === 'rectangle'">Click & drag to draw box</template>
+            <template v-else-if="tool === 'polygon'">Click vertices, double-click to close</template>
+            <template v-else-if="tool === 'select'">Click label to select & delete</template>
+          </p>
+        </div>
+
+        <!-- Zoom -->
+        <div class="bg-white rounded-lg shadow-sm border p-3">
+          <h3 class="font-medium text-sm mb-2">Zoom: {{ (zoom * 100).toFixed(0) }}%</h3>
+          <input type="range" v-model.number="zoom" min="0.25" max="4" step="0.25" class="w-full" />
+          <button @click="zoom = 1; panOffset = { x: 0, y: 0 }"
+            class="mt-1 w-full text-xs text-gray-500 hover:text-gray-700">Reset View</button>
+        </div>
+
         <!-- Upload -->
-        <div class="bg-white rounded-lg shadow-sm border p-4">
-          <h3 class="font-medium mb-3">Upload Images</h3>
-          <input
-            ref="fileInput"
-            type="file"
-            multiple
-            accept="image/*"
-            class="hidden"
-            @change="handleFileUpload"
-          />
-          <button
-            @click="fileInput.click()"
-            class="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-md text-sm text-gray-600 hover:border-blue-400 hover:text-blue-600"
-          >
+        <div class="bg-white rounded-lg shadow-sm border p-3">
+          <h3 class="font-medium text-sm mb-2">Upload</h3>
+          <input ref="fileInput" type="file" multiple accept="image/*" class="hidden" @change="handleFileUpload" />
+          <button @click="fileInput.click()"
+            class="w-full px-3 py-2 border-2 border-dashed border-gray-300 rounded-md text-xs text-gray-600 hover:border-blue-400 hover:text-blue-600">
             + Select Images
           </button>
-          <p class="text-xs text-gray-400 mt-2">Supports JPG, PNG, BMP</p>
         </div>
 
         <!-- Image List -->
         <div class="bg-white rounded-lg shadow-sm border overflow-hidden">
-          <div class="p-3 border-b bg-gray-50">
-            <h3 class="font-medium text-sm">Image List</h3>
+          <div class="p-2 border-b bg-gray-50 flex items-center justify-between">
+            <h3 class="font-medium text-xs">Images</h3>
+            <span class="text-xs text-gray-400">{{ currentIndex + 1 }}/{{ images.length }}</span>
           </div>
-          <div class="max-h-96 overflow-y-auto divide-y">
-            <div
-              v-for="(img, i) in images"
-              :key="img.name"
-              @click="selectImage(i)"
-              class="p-2 cursor-pointer flex items-center space-x-2 text-sm"
-              :class="currentIndex === i ? 'bg-blue-50' : 'hover:bg-gray-50'"
-            >
-              <img
-                :src="img.url"
-                class="w-10 h-10 object-cover rounded"
-              />
+          <div class="max-h-52 overflow-y-auto divide-y">
+            <div v-for="(img, i) in images" :key="img.name" @click="selectImage(i)"
+              class="p-1.5 cursor-pointer flex items-center space-x-2 text-xs"
+              :class="currentIndex === i ? 'bg-blue-50' : 'hover:bg-gray-50'">
+              <img :src="img.url" class="w-8 h-8 object-cover rounded" />
               <div class="flex-1 min-w-0">
                 <p class="truncate">{{ img.name }}</p>
-                <p class="text-xs text-gray-400">{{ (img.labels || []).length }} labels</p>
+                <p class="text-[10px] text-gray-400">{{ (img.labels || []).length }} labels</p>
               </div>
-              <button
-                @click.stop="removeImage(i)"
-                class="text-gray-400 hover:text-red-500"
-              >×</button>
+              <button @click.stop="removeImage(i)" class="text-gray-400 hover:text-red-500 px-1">×</button>
             </div>
-            <div v-if="images.length === 0" class="p-4 text-center text-sm text-gray-400">
-              No images uploaded
-            </div>
+            <div v-if="images.length === 0" class="p-3 text-center text-xs text-gray-400">No images</div>
           </div>
-        </div>
-
-        <!-- Actions -->
-        <div class="bg-white rounded-lg shadow-sm border p-4 space-y-2">
-          <button
-            @click="runAutoLabel"
-            :disabled="images.length === 0 || isAutoLabeling"
-            class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
-          >
-            {{ isAutoLabeling ? 'Labeling...' : 'Auto Label (YOLO)' }}
-          </button>
-          <button
-            @click="exportLabels"
-            :disabled="totalLabels === 0"
-            class="w-full px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 text-sm"
-          >
-            Export YOLO Format
-          </button>
-          <button
-            @click="clearAll"
-            class="w-full px-4 py-2 border border-red-200 text-red-600 rounded-md hover:bg-red-50 text-sm"
-          >
-            Clear All
-          </button>
         </div>
       </div>
 
       <!-- Center: Canvas -->
-      <div class="lg:col-span-2 space-y-4">
-        <div class="bg-white rounded-lg shadow-sm border overflow-hidden">
-          <div class="p-3 border-b flex items-center justify-between">
-            <div class="flex items-center space-x-2">
-              <h3 class="font-medium text-sm">Labeling Canvas</h3>
-              <span v-if="currentImage" class="text-xs text-gray-400">
-                {{ currentImage.name }}
-              </span>
-            </div>
-            <div class="flex items-center space-x-2">
-              <select
-                v-model="selectedClass"
-                class="text-sm border rounded px-2 py-1"
-              >
-                <option v-for="cls in classes" :key="cls" :value="cls">{{ cls }}</option>
-              </select>
-              <button
-                @click="deleteSelectedLabel"
-                :disabled="selectedLabelIndex === null"
-                class="px-2 py-1 text-xs border rounded hover:bg-gray-50 disabled:opacity-50"
-              >Delete</button>
+      <div class="lg:col-span-8 space-y-3">
+        <!-- Canvas Toolbar -->
+        <div class="bg-white rounded-lg shadow-sm border p-2 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <span class="text-sm font-medium">Canvas</span>
+            <span v-if="currentImage" class="text-xs text-gray-400">{{ currentImage.name }}</span>
+            <span v-if="currentImage" class="text-xs text-gray-400">
+              ({{ currentImage.width }}×{{ currentImage.height }})
+            </span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <select v-model="selectedClass" class="text-xs border rounded px-2 py-1">
+              <option v-for="cls in classes" :key="cls" :value="cls">{{ cls }}</option>
+            </select>
+            <button @click="deleteSelectedLabel" :disabled="selectedLabelIndex === null"
+              class="px-2 py-1 text-xs border rounded hover:bg-gray-50 disabled:opacity-40">Delete</button>
+            <button @click="runAutoLabel" :disabled="!currentImage || isAutoLabeling"
+              class="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40">
+              {{ isAutoLabeling ? '...' : 'Auto Label' }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Canvas -->
+        <div ref="canvasWrapper" class="relative bg-gray-900 rounded-lg overflow-hidden"
+          style="min-height: 520px; height: calc(100vh - 240px);">
+          <canvas ref="canvas"
+            class="absolute inset-0 w-full h-full"
+            :class="{ 'cursor-crosshair': tool !== 'select', 'cursor-default': tool === 'select' }"
+            @mousedown="onMouseDown"
+            @mousemove="onMouseMove"
+            @mouseup="onMouseUp"
+            @mouseleave="onMouseUp"
+            @dblclick="onDoubleClick"
+            @contextmenu.prevent="onRightClick"
+            @wheel.prevent="onWheel"
+          />
+          <div v-if="!currentImage"
+            class="absolute inset-0 flex items-center justify-center text-gray-500 pointer-events-none">
+            <div class="text-center">
+              <p class="text-lg mb-2">No image selected</p>
+              <p class="text-sm">Upload images to start labeling</p>
             </div>
           </div>
-          <div class="relative bg-gray-900 flex items-center justify-center" style="min-height: 480px;">
-            <canvas
-              ref="canvas"
-              @mousedown="onMouseDown"
-              @mousemove="onMouseMove"
-              @mouseup="onMouseUp"
-              @mouseleave="onMouseUp"
-              class="max-w-full max-h-[480px] cursor-crosshair"
-            />
-            <div v-if="!currentImage" class="absolute inset-0 flex items-center justify-center text-gray-500">
-              <div class="text-center">
-                <p class="text-lg mb-2">No image selected</p>
-                <p class="text-sm">Upload images to start labeling</p>
-              </div>
-            </div>
+          <div v-if="tool === 'polygon' && isDrawingPolygon"
+            class="absolute bottom-3 left-3 bg-black/70 text-white text-xs px-2 py-1 rounded">
+            Polygon: {{ currentPolygon.length }} vertices — double-click to close
           </div>
         </div>
 
         <!-- Navigation -->
-        <div class="flex items-center justify-between bg-white rounded-lg shadow-sm border p-3">
-          <button
-            @click="prevImage"
-            :disabled="currentIndex <= 0"
-            class="px-3 py-1 border rounded text-sm disabled:opacity-50"
-          >← Prev</button>
-          <span class="text-sm text-gray-600">
-            {{ images.length > 0 ? currentIndex + 1 : 0 }} / {{ images.length }}
-          </span>
-          <button
-            @click="nextImage"
-            :disabled="currentIndex >= images.length - 1"
-            class="px-3 py-1 border rounded text-sm disabled:opacity-50"
-          >Next →</button>
+        <div class="flex items-center justify-between bg-white rounded-lg shadow-sm border p-2">
+          <button @click="prevImage" :disabled="currentIndex <= 0"
+            class="px-3 py-1 border rounded text-sm disabled:opacity-40">← Prev</button>
+          <div class="flex items-center space-x-1">
+            <button v-for="(_, i) in images.slice(Math.max(0, currentIndex - 3), currentIndex + 4)" :key="i"
+              @click="selectImage(i + Math.max(0, currentIndex - 3))"
+              class="w-6 h-6 rounded text-xs"
+              :class="i + Math.max(0, currentIndex - 3) === currentIndex
+                ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">
+              {{ i + Math.max(0, currentIndex - 3) + 1 }}
+            </button>
+          </div>
+          <button @click="nextImage" :disabled="currentIndex >= images.length - 1"
+            class="px-3 py-1 border rounded text-sm disabled:opacity-40">Next →</button>
         </div>
       </div>
 
-      <!-- Right: Labels & Classes -->
-      <div class="lg:col-span-1 space-y-4">
-        <!-- Class Manager -->
-        <div class="bg-white rounded-lg shadow-sm border p-4">
-          <h3 class="font-medium mb-3">Classes</h3>
-          <div class="flex space-x-2 mb-3">
-            <input
-              v-model="newClass"
-              placeholder="Add class..."
-              class="flex-1 border rounded px-2 py-1 text-sm"
-              @keyup.enter="addClass"
-            />
-            <button
-              @click="addClass"
-              class="px-3 py-1 bg-gray-100 rounded text-sm hover:bg-gray-200"
-            >+</button>
+      <!-- Right Sidebar -->
+      <div class="lg:col-span-2 space-y-3">
+        <!-- Classes -->
+        <div class="bg-white rounded-lg shadow-sm border p-3">
+          <h3 class="font-medium text-sm mb-2">Classes</h3>
+          <div class="flex space-x-1 mb-2">
+            <input v-model="newClass" placeholder="Add class..." class="flex-1 border rounded px-2 py-1 text-xs"
+              @keyup.enter="addClass" />
+            <button @click="addClass" class="px-2 py-1 bg-gray-100 rounded text-xs hover:bg-gray-200">+</button>
           </div>
-          <div class="space-y-1 max-h-40 overflow-y-auto">
-            <div
-              v-for="(cls, i) in classes"
-              :key="cls"
-              class="flex items-center justify-between p-1.5 rounded text-sm cursor-pointer"
+          <div class="space-y-0.5 max-h-36 overflow-y-auto">
+            <div v-for="(cls, i) in classes" :key="cls"
+              class="flex items-center justify-between p-1 rounded text-xs cursor-pointer"
               :class="selectedClass === cls ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'"
-              @click="selectedClass = cls"
-            >
-              <div class="flex items-center space-x-2">
-                <span
-                  class="w-3 h-3 rounded"
-                  :style="{ backgroundColor: classColors[i % classColors.length] }"
-                ></span>
+              @click="selectedClass = cls">
+              <div class="flex items-center space-x-1.5">
+                <span class="w-2.5 h-2.5 rounded-sm"
+                  :style="{ backgroundColor: classColors[i % classColors.length] }"></span>
                 <span>{{ cls }}</span>
               </div>
-              <button
-                @click.stop="removeClass(i)"
-                class="text-gray-400 hover:text-red-500 text-xs"
-                v-if="i > 0"
-              >×</button>
+              <button v-if="i > 0" @click.stop="removeClass(i)"
+                class="text-gray-400 hover:text-red-500 px-1">×</button>
             </div>
           </div>
         </div>
 
-        <!-- Current Labels -->
-        <div class="bg-white rounded-lg shadow-sm border p-4">
-          <h3 class="font-medium mb-3">Current Labels</h3>
-          <div v-if="currentImage" class="space-y-1 max-h-60 overflow-y-auto">
-            <div
-              v-for="(label, i) in currentImage.labels || []"
-              :key="i"
-              @click="selectedLabelIndex = i"
-              class="flex items-center space-x-2 p-1.5 rounded text-xs cursor-pointer"
-              :class="selectedLabelIndex === i ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'"
-            >
-              <span
-                class="w-2.5 h-2.5 rounded"
-                :style="{ backgroundColor: classColors[classes.indexOf(label.cls) % classColors.length] }"
-              ></span>
-              <span class="flex-1">{{ label.cls }}</span>
-              <span class="text-gray-400">{{ (label.conf * 100).toFixed(0) }}%</span>
+        <!-- Labels -->
+        <div class="bg-white rounded-lg shadow-sm border p-3">
+          <h3 class="font-medium text-sm mb-2">Labels ({{ currentLabels.length }})</h3>
+          <div v-if="currentImage" class="space-y-0.5 max-h-48 overflow-y-auto">
+            <div v-for="(label, i) in currentLabels" :key="i"
+              @click="selectedLabelIndex = i; renderCanvas()"
+              class="flex items-center space-x-1.5 p-1 rounded text-xs cursor-pointer"
+              :class="selectedLabelIndex === i ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'">
+              <span class="w-2 h-2 rounded-sm"
+                :style="{ backgroundColor: classColors[classes.indexOf(label.cls) % classColors.length] }"></span>
+              <span class="flex-1 truncate">{{ label.cls }}</span>
+              <span class="text-gray-400 text-[10px]">{{ label.type === 'polygon' ? '⬠' : '▭' }}</span>
+              <span class="text-gray-400 text-[10px]">{{ (label.conf * 100).toFixed(0) }}%</span>
             </div>
-            <div v-if="!currentImage.labels || currentImage.labels.length === 0" class="text-sm text-gray-400 text-center py-2">
-              No labels yet
-            </div>
+            <div v-if="currentLabels.length === 0" class="text-xs text-gray-400 text-center py-2">No labels</div>
           </div>
-          <div v-else class="text-sm text-gray-400 text-center py-2">
-            Select an image
-          </div>
+          <div v-else class="text-xs text-gray-400 text-center py-2">Select an image</div>
         </div>
 
-        <!-- Import/Export Classes -->
-        <div class="bg-white rounded-lg shadow-sm border p-4">
-          <h3 class="font-medium mb-2 text-sm">Classes Config</h3>
-          <textarea
-            v-model="classesYaml"
-            class="w-full border rounded px-2 py-1 text-xs font-mono"
-            rows="4"
-            placeholder="class1&#10;class2&#10;class3"
-          ></textarea>
-          <button
-            @click="importClasses"
-            class="mt-2 w-full px-3 py-1 border rounded text-xs hover:bg-gray-50"
-          >Import Classes</button>
+        <!-- Actions -->
+        <div class="bg-white rounded-lg shadow-sm border p-3 space-y-1.5">
+          <button @click="exportLabels" :disabled="totalLabels === 0"
+            class="w-full px-3 py-1.5 border border-gray-300 rounded-md text-xs hover:bg-gray-50 disabled:opacity-40">
+            Export YOLO Format
+          </button>
+          <button @click="exportCOCO" :disabled="totalLabels === 0"
+            class="w-full px-3 py-1.5 border border-gray-300 rounded-md text-xs hover:bg-gray-50 disabled:opacity-40">
+            Export COCO JSON
+          </button>
+          <button @click="clearAll"
+            class="w-full px-3 py-1.5 border border-red-200 text-red-600 rounded-md text-xs hover:bg-red-50">
+            Clear All
+          </button>
+        </div>
+
+        <!-- Import Classes -->
+        <div class="bg-white rounded-lg shadow-sm border p-3">
+          <h3 class="font-medium text-xs mb-1">Import Classes</h3>
+          <textarea v-model="classesYaml" class="w-full border rounded px-2 py-1 text-xs font-mono" rows="3"
+            placeholder="class1&#10;class2"></textarea>
+          <button @click="importClasses"
+            class="mt-1 w-full px-2 py-1 border rounded text-xs hover:bg-gray-50">Import</button>
         </div>
       </div>
     </div>
@@ -237,10 +230,10 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import http from '../api/http'
 
-// State
+// ==================== State ====================
 const images = ref([])
 const currentIndex = ref(-1)
 const classes = ref(['board', 'hand', 'tool', 'solder', 'component'])
@@ -251,42 +244,110 @@ const isAutoLabeling = ref(false)
 const classesYaml = ref('')
 const fileInput = ref(null)
 
-// Canvas
-const canvas = ref(null)
-const isDrawing = ref(false)
-const drawStart = ref({ x: 0, y: 0 })
-const drawEnd = ref({ x: 0, y: 0 })
-const scale = ref(1)
-const offset = ref({ x: 0, y: 0 })
+const tool = ref('rectangle') // 'rectangle' | 'polygon' | 'select'
+const zoom = ref(1)
+const panOffset = ref({ x: 0, y: 0 })
 
-// Image cache for loaded images
+const canvas = ref(null)
+const canvasWrapper = ref(null)
+
+// Rectangle drawing
+const isDrawingRect = ref(false)
+const rectStart = ref({ x: 0, y: 0 })
+const rectEnd = ref({ x: 0, y: 0 })
+
+// Polygon drawing
+const isDrawingPolygon = ref(false)
+const currentPolygon = ref([])
+
+// Image cache
 const loadedImages = new Map()
 
-// Colors for classes
+// Undo
+const undoStack = ref([])
+
+// Colors
 const classColors = [
   '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
   '#EC4899', '#06B6D4', '#F97316', '#84CC16', '#6366F1',
 ]
 
+// ==================== Computed ====================
 const currentImage = computed(() => images.value[currentIndex.value] || null)
+const currentLabels = computed(() => currentImage.value?.labels || [])
 const totalLabels = computed(() =>
   images.value.reduce((sum, img) => sum + (img.labels?.length || 0), 0)
 )
+const rectCount = computed(() =>
+  images.value.reduce((sum, img) => sum + (img.labels?.filter(l => l.type === 'box' || !l.type).length || 0), 0)
+)
+const polyCount = computed(() =>
+  images.value.reduce((sum, img) => sum + (img.labels?.filter(l => l.type === 'polygon').length || 0), 0)
+)
+const canUndo = computed(() => undoStack.value.length > 0)
 
-// File upload
+// ==================== Helpers ====================
+function saveUndo() {
+  const snapshot = images.value.map(img => ({
+    ...img,
+    labels: (img.labels || []).map(l => ({ ...l, points: l.points ? [...l.points.map(p => ({ ...p }))] : undefined })),
+  }))
+  undoStack.value.push(snapshot)
+  if (undoStack.value.length > 50) undoStack.value.shift()
+}
+
+function undoLast() {
+  if (!canUndo.value) return
+  const snapshot = undoStack.value.pop()
+  images.value = snapshot
+  renderCanvas()
+}
+
+function toImageCoords(e) {
+  const rect = canvas.value.getBoundingClientRect()
+  return {
+    x: (e.clientX - rect.left - panOffset.value.x) / zoom.value,
+    y: (e.clientY - rect.top - panOffset.value.y) / zoom.value,
+  }
+}
+
+function pointInPolygon(pt, polygon) {
+  // Ray casting algorithm
+  let inside = false
+  const n = polygon.length
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y
+    const xj = polygon[j].x, yj = polygon[j].y
+    if ((yi > pt.y) !== (yj > pt.y) && pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi) {
+      inside = !inside
+    }
+  }
+  return inside
+}
+
+// ==================== File Upload ====================
 function handleFileUpload(e) {
   const files = Array.from(e.target.files)
   files.forEach(file => {
     const reader = new FileReader()
     reader.onload = (ev) => {
       const url = ev.target.result
-      images.value.push({
-        name: file.name,
-        url,
-        labels: [],
-        file,
-      })
-      if (currentIndex.value < 0) currentIndex.value = 0
+      const img = new Image()
+      img.onload = () => {
+        images.value.push({
+          name: file.name,
+          url,
+          labels: [],
+          file,
+          width: img.naturalWidth,
+          height: img.naturalHeight,
+        })
+        if (currentIndex.value < 0) {
+          currentIndex.value = 0
+          loadAndRender(0)
+        }
+      }
+      img.src = url
     }
     reader.readAsDataURL(file)
   })
@@ -295,24 +356,34 @@ function handleFileUpload(e) {
 
 function removeImage(i) {
   images.value.splice(i, 1)
-  if (currentIndex.value >= images.value.length) {
-    currentIndex.value = images.value.length - 1
-  }
+  if (currentIndex.value >= images.value.length) currentIndex.value = images.value.length - 1
+  if (currentIndex.value >= 0) loadAndRender(currentIndex.value)
+  else renderCanvas()
 }
 
 function selectImage(i) {
   currentIndex.value = i
+  loadAndRender(i)
 }
 
-function prevImage() {
-  if (currentIndex.value > 0) currentIndex.value--
+function prevImage() { if (currentIndex.value > 0) selectImage(currentIndex.value - 1) }
+function nextImage() { if (currentIndex.value < images.value.length - 1) selectImage(currentIndex.value + 1) }
+
+async function loadAndRender(i) {
+  selectedLabelIndex.value = null
+  const img = images.value[i]
+  if (!img) return
+  if (!loadedImages.has(img.url)) {
+    const imageObj = new Image()
+    imageObj.src = img.url
+    await new Promise(resolve => { imageObj.onload = resolve })
+    loadedImages.set(img.url, imageObj)
+  }
+  await nextTick()
+  renderCanvas()
 }
 
-function nextImage() {
-  if (currentIndex.value < images.value.length - 1) currentIndex.value++
-}
-
-// Classes
+// ==================== Classes ====================
 function addClass() {
   const cls = newClass.value.trim()
   if (cls && !classes.value.includes(cls)) {
@@ -324,162 +395,377 @@ function addClass() {
 
 function removeClass(i) {
   const removed = classes.value.splice(i, 1)[0]
-  if (selectedClass.value === removed) {
-    selectedClass.value = classes.value[0] || ''
-  }
+  if (selectedClass.value === removed) selectedClass.value = classes.value[0] || ''
 }
 
 function importClasses() {
-  const lines = classesYaml.value.split('\n').map(l => l.trim()).filter(l => l)
-  lines.forEach(cls => {
-    if (!classes.value.includes(cls)) {
-      classes.value.push(cls)
-    }
+  classesYaml.value.split('\n').map(l => l.trim()).filter(l => l).forEach(cls => {
+    if (!classes.value.includes(cls)) classes.value.push(cls)
   })
   classesYaml.value = ''
 }
 
-// Canvas drawing
-function getImageCoords(e) {
-  const rect = canvas.value.getBoundingClientRect()
-  const x = (e.clientX - rect.left) / scale.value
-  const y = (e.clientY - rect.top) / scale.value
-  return { x, y }
-}
-
+// ==================== Mouse Events ====================
 function onMouseDown(e) {
-  if (!currentImage.value) return
-  isDrawing.value = true
-  const coords = getImageCoords(e)
-  drawStart.value = coords
-  drawEnd.value = coords
+  if (!currentImage.value || e.button !== 0) return
+  const coords = toImageCoords(e)
+
+  if (tool.value === 'rectangle') {
+    saveUndo()
+    isDrawingRect.value = true
+    rectStart.value = coords
+    rectEnd.value = coords
+    renderCanvas()
+  } else if (tool.value === 'polygon') {
+    saveUndo()
+    if (!isDrawingPolygon.value) {
+      isDrawingPolygon.value = true
+      currentPolygon.value = [coords]
+    } else {
+      // Check closing: near first vertex
+      if (currentPolygon.value.length >= 3) {
+        const first = currentPolygon.value[0]
+        const dist = Math.hypot(coords.x - first.x, coords.y - first.y)
+        if (dist < 10 / zoom.value) {
+          finishPolygon()
+          return
+        }
+      }
+      currentPolygon.value.push(coords)
+    }
+    renderCanvas()
+  } else if (tool.value === 'select') {
+    const labels = currentLabels.value
+    let hit = false
+    for (let i = labels.length - 1; i >= 0; i--) {
+      const label = labels[i]
+      if (label.type === 'polygon') {
+        const img = loadedImages.get(currentImage.value.url)
+        const pts = label.points.map(p => ({
+          x: p.x * img.naturalWidth,
+          y: p.y * img.naturalHeight,
+        }))
+        if (pointInPolygon(coords, pts)) {
+          selectedLabelIndex.value = i
+          hit = true
+          break
+        }
+      } else {
+        const img = loadedImages.get(currentImage.value.url)
+        const cx = label.x * img.naturalWidth
+        const cy = label.y * img.naturalHeight
+        const hw = (label.w * img.naturalWidth) / 2
+        const hh = (label.h * img.naturalHeight) / 2
+        if (coords.x >= cx - hw && coords.x <= cx + hw && coords.y >= cy - hh && coords.y <= cy + hh) {
+          selectedLabelIndex.value = i
+          hit = true
+          break
+        }
+      }
+    }
+    if (!hit) selectedLabelIndex.value = null
+    renderCanvas()
+  }
 }
 
 function onMouseMove(e) {
-  if (!isDrawing.value) return
-  drawEnd.value = getImageCoords(e)
-  renderCanvas()
+  if (tool.value === 'rectangle' && isDrawingRect.value) {
+    rectEnd.value = toImageCoords(e)
+    renderCanvas()
+  } else if (tool.value === 'polygon' && isDrawingPolygon.value) {
+    renderCanvas(toImageCoords(e))
+  }
 }
 
 function onMouseUp(e) {
-  if (!isDrawing.value) return
-  isDrawing.value = false
-  drawEnd.value = getImageCoords(e)
+  if (tool.value === 'rectangle' && isDrawingRect.value) {
+    isDrawingRect.value = false
+    rectEnd.value = toImageCoords(e)
+    const img = loadedImages.get(currentImage.value.url)
+    if (!img) { renderCanvas(); return }
 
-  // Normalize to YOLO format (0-1)
+    const x1 = Math.min(rectStart.value.x, rectEnd.value.x)
+    const y1 = Math.min(rectStart.value.y, rectEnd.value.y)
+    const x2 = Math.max(rectStart.value.x, rectEnd.value.x)
+    const y2 = Math.max(rectStart.value.y, rectEnd.value.y)
+    if (Math.abs(x2 - x1) < 3 || Math.abs(y2 - y1) < 3) { renderCanvas(); return }
+
+    const label = {
+      type: 'box',
+      cls: selectedClass.value,
+      x: (x1 + x2) / 2 / img.naturalWidth,
+      y: (y1 + y2) / 2 / img.naturalHeight,
+      w: Math.abs(x2 - x1) / img.naturalWidth,
+      h: Math.abs(y2 - y1) / img.naturalHeight,
+      conf: 1.0,
+    }
+    if (!currentImage.value.labels) currentImage.value.labels = []
+    currentImage.value.labels.push(label)
+    selectedLabelIndex.value = currentImage.value.labels.length - 1
+    renderCanvas()
+  }
+}
+
+function onDoubleClick(e) {
+  if (tool.value === 'polygon' && isDrawingPolygon.value && currentPolygon.value.length >= 3) {
+    finishPolygon()
+  }
+}
+
+function onRightClick(e) {
+  if (tool.value === 'polygon' && isDrawingPolygon.value) {
+    if (currentPolygon.value.length >= 3) {
+      finishPolygon()
+    } else {
+      isDrawingPolygon.value = false
+      currentPolygon.value = []
+      renderCanvas()
+    }
+  }
+}
+
+function onWheel(e) {
+  const delta = e.deltaY > 0 ? -0.25 : 0.25
+  const newZoom = Math.max(0.25, Math.min(4, zoom.value + delta))
+  zoom.value = newZoom
+  renderCanvas()
+}
+
+function finishPolygon() {
   const img = loadedImages.get(currentImage.value.url)
-  if (!img) return
+  if (!img || currentPolygon.value.length < 3) {
+    isDrawingPolygon.value = false
+    currentPolygon.value = []
+    renderCanvas()
+    return
+  }
 
-  const x1 = Math.min(drawStart.value.x, drawEnd.value.x)
-  const y1 = Math.min(drawStart.value.y, drawEnd.value.y)
-  const x2 = Math.max(drawStart.value.x, drawEnd.value.x)
-  const y2 = Math.max(drawStart.value.y, drawEnd.value.y)
+  // Normalize polygon points to 0-1
+  const points = currentPolygon.value.map(p => ({
+    x: p.x / img.naturalWidth,
+    y: p.y / img.naturalHeight,
+  }))
 
-  // Minimum box size
-  if (Math.abs(x2 - x1) < 5 || Math.abs(y2 - y1) < 5) return
+  // Compute bounding box for the polygon
+  const xs = points.map(p => p.x)
+  const ys = points.map(p => p.y)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
 
   const label = {
+    type: 'polygon',
     cls: selectedClass.value,
-    x: (x1 + x2) / 2 / img.naturalWidth,
-    y: (y1 + y2) / 2 / img.naturalHeight,
-    w: Math.abs(x2 - x1) / img.naturalWidth,
-    h: Math.abs(y2 - y1) / img.naturalHeight,
+    points,
+    // Also store bbox for compatibility
+    x: (minX + maxX) / 2,
+    y: (minY + maxY) / 2,
+    w: maxX - minX,
+    h: maxY - minY,
     conf: 1.0,
   }
 
   if (!currentImage.value.labels) currentImage.value.labels = []
   currentImage.value.labels.push(label)
   selectedLabelIndex.value = currentImage.value.labels.length - 1
+
+  isDrawingPolygon.value = false
+  currentPolygon.value = []
   renderCanvas()
 }
 
 function deleteSelectedLabel() {
   if (selectedLabelIndex.value === null || !currentImage.value) return
+  saveUndo()
   currentImage.value.labels.splice(selectedLabelIndex.value, 1)
   selectedLabelIndex.value = null
   renderCanvas()
 }
 
-function renderCanvas() {
+// ==================== Canvas Rendering ====================
+function renderCanvas(mousePos = null) {
   const cvs = canvas.value
   if (!cvs) return
   const ctx = cvs.getContext('2d')
+  const wrapper = canvasWrapper.value
+  if (!wrapper) return
+
+  // Resize canvas to match display
+  const dpr = window.devicePixelRatio || 1
+  const rect = wrapper.getBoundingClientRect()
+  cvs.width = rect.width * dpr
+  cvs.height = rect.height * dpr
+  ctx.scale(dpr, dpr)
+
+  const w = rect.width
+  const h = rect.height
+  ctx.clearRect(0, 0, w, h)
+
+  // Draw checkerboard background
+  const tileSize = 16
+  for (let y = 0; y < h; y += tileSize) {
+    for (let x = 0; x < w; x += tileSize) {
+      ctx.fillStyle = ((x + y) / tileSize) % 2 === 0 ? '#1a1a2e' : '#16213e'
+      ctx.fillRect(x, y, tileSize, tileSize)
+    }
+  }
+
   const img = loadedImages.get(currentImage.value?.url)
   if (!img) return
 
-  // Set canvas size to match image display
-  const maxW = cvs.parentElement.clientWidth
-  const maxH = 480
-  const imgRatio = img.naturalWidth / img.naturalHeight
-  let displayW, displayH
+  // Calculate image display area with zoom and pan
+  const imgW = img.naturalWidth * zoom.value
+  const imgH = img.naturalHeight * zoom.value
+  const drawX = panOffset.value.x
+  const drawY = panOffset.value.y
 
-  if (maxW / maxH > imgRatio) {
-    displayH = maxH
-    displayW = maxH * imgRatio
-  } else {
-    displayW = maxW
-    displayH = maxW / imgRatio
-  }
+  ctx.save()
+  // Clip to image area
+  ctx.beginPath()
+  ctx.rect(drawX, drawY, imgW, imgH)
+  ctx.clip()
+  ctx.drawImage(img, drawX, drawY, imgW, imgH)
 
-  cvs.width = displayW
-  cvs.height = displayH
-  scale.value = displayW / img.naturalWidth
-
-  // Draw image
-  ctx.drawImage(img, 0, 0, displayW, displayH)
-
-  // Draw existing labels
+  // Draw labels
   const labels = currentImage.value?.labels || []
   labels.forEach((label, i) => {
     const color = classColors[classes.value.indexOf(label.cls) % classColors.length]
-    const bx = label.x * displayW
-    const by = label.y * displayH
-    const bw = label.w * displayW
-    const bh = label.h * displayH
+    const isSelected = i === selectedLabelIndex.value
 
-    ctx.strokeStyle = color
-    ctx.lineWidth = i === selectedLabelIndex.value ? 3 : 2
-    ctx.strokeRect(bx - bw / 2, by - bh / 2, bw, bh)
+    if (label.type === 'polygon' && label.points) {
+      // Draw polygon
+      ctx.beginPath()
+      label.points.forEach((p, j) => {
+        const px = drawX + p.x * imgW
+        const py = drawY + p.y * imgH
+        if (j === 0) ctx.moveTo(px, py)
+        else ctx.lineTo(px, py)
+      })
+      ctx.closePath()
+      ctx.fillStyle = color + (isSelected ? '60' : '30')
+      ctx.fill()
+      ctx.strokeStyle = color
+      ctx.lineWidth = isSelected ? 3 : 2
+      ctx.stroke()
 
-    // Label text
-    ctx.fillStyle = color
-    ctx.fillRect(bx - bw / 2, by - bh / 2 - 16, ctx.measureText(label.cls).width + 8, 16)
-    ctx.fillStyle = '#fff'
-    ctx.font = '12px sans-serif'
-    ctx.fillText(label.cls, bx - bw / 2 + 4, by - bh / 2 - 4)
+      // Draw vertices
+      label.points.forEach((p) => {
+        const px = drawX + p.x * imgW
+        const py = drawY + p.y * imgH
+        ctx.beginPath()
+        ctx.arc(px, py, isSelected ? 4 : 3, 0, Math.PI * 2)
+        ctx.fillStyle = color
+        ctx.fill()
+      })
+    } else {
+      // Draw box
+      const bx = drawX + label.x * imgW
+      const by = drawY + label.y * imgH
+      const bw = label.w * imgW
+      const bh = label.h * imgH
+
+      ctx.fillStyle = color + (isSelected ? '40' : '15')
+      ctx.fillRect(bx - bw / 2, by - bh / 2, bw, bh)
+      ctx.strokeStyle = color
+      ctx.lineWidth = isSelected ? 3 : 2
+      ctx.strokeRect(bx - bw / 2, by - bh / 2, bw, bh)
+
+      // Label text background
+      ctx.fillStyle = color
+      const text = label.cls
+      ctx.font = '11px sans-serif'
+      const tw = ctx.measureText(text).width
+      ctx.fillRect(bx - bw / 2, by - bh / 2 - 16, tw + 6, 16)
+      ctx.fillStyle = '#fff'
+      ctx.fillText(text, bx - bw / 2 + 3, by - bh / 2 - 4)
+    }
   })
 
-  // Draw current drawing box
-  if (isDrawing.value) {
-    const x = Math.min(drawStart.value.x, drawEnd.value.x) * scale.value
-    const y = Math.min(drawStart.value.y, drawEnd.value.y) * scale.value
-    const w = Math.abs(drawEnd.value.x - drawStart.value.x) * scale.value
-    const h = Math.abs(drawEnd.value.y - drawStart.value.y) * scale.value
-    ctx.strokeStyle = '#fff'
+  // Draw current rectangle
+  if (isDrawingRect.value) {
+    const x = Math.min(rectStart.value.x, rectEnd.value.x) * zoom.value + drawX
+    const y = Math.min(rectStart.value.y, rectEnd.value.y) * zoom.value + drawY
+    const rw = Math.abs(rectEnd.value.x - rectStart.value.x) * zoom.value
+    const rh = Math.abs(rectEnd.value.y - rectStart.value.y) * zoom.value
+    ctx.strokeStyle = classColors[classes.value.indexOf(selectedClass.value) % classColors.length]
     ctx.lineWidth = 2
-    ctx.setLineDash([5, 5])
-    ctx.strokeRect(x, y, w, h)
+    ctx.setLineDash([6, 4])
+    ctx.strokeRect(x, y, rw, rh)
     ctx.setLineDash([])
   }
+
+  // Draw current polygon
+  if (isDrawingPolygon.value && currentPolygon.value.length > 0) {
+    const color = classColors[classes.value.indexOf(selectedClass.value) % classColors.length]
+
+    // Draw edges
+    ctx.beginPath()
+    currentPolygon.value.forEach((p, j) => {
+      const px = p.x * zoom.value + drawX
+      const py = p.y * zoom.value + drawY
+      if (j === 0) ctx.moveTo(px, py)
+      else ctx.lineTo(px, py)
+    })
+
+    // Line to mouse position for preview
+    if (mousePos) {
+      ctx.lineTo(mousePos.x * zoom.value + drawX, mousePos.y * zoom.value + drawY)
+    }
+    ctx.strokeStyle = color
+    ctx.lineWidth = 2
+    ctx.setLineDash([6, 4])
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // Draw vertices
+    currentPolygon.value.forEach((p, j) => {
+      const px = p.x * zoom.value + drawX
+      const py = p.y * zoom.value + drawY
+      ctx.beginPath()
+      ctx.arc(px, py, j === 0 ? 5 : 4, 0, Math.PI * 2)
+      ctx.fillStyle = j === 0 ? '#fff' : color
+      ctx.fill()
+      if (j === 0) {
+        ctx.strokeStyle = color
+        ctx.lineWidth = 2
+        ctx.stroke()
+      }
+    })
+
+    // First vertex hint
+    if (currentPolygon.value.length >= 3) {
+      const first = currentPolygon.value[0]
+      const fx = first.x * zoom.value + drawX
+      const fy = first.y * zoom.value + drawY
+      ctx.beginPath()
+      ctx.arc(fx, fy, 8, 0, Math.PI * 2)
+      ctx.strokeStyle = '#fff'
+      ctx.lineWidth = 1
+      ctx.setLineDash([2, 2])
+      ctx.stroke()
+      ctx.setLineDash([])
+    }
+  }
+
+  ctx.restore()
 }
 
-// Watch for image changes and render
+// ==================== Watch ====================
 watch(currentIndex, async () => {
   selectedLabelIndex.value = null
-  if (!currentImage.value) return
-
-  // Load image if not cached
+  if (!currentImage.value) { renderCanvas(); return }
   if (!loadedImages.has(currentImage.value.url)) {
     const img = new Image()
     img.src = currentImage.value.url
     await new Promise(resolve => { img.onload = resolve })
     loadedImages.set(currentImage.value.url, img)
   }
-
+  await nextTick()
   renderCanvas()
 })
 
-// Auto label via YOLO
+// ==================== Auto Label ====================
 async function runAutoLabel() {
   isAutoLabeling.value = true
   try {
@@ -490,14 +776,18 @@ async function runAutoLabel() {
       const { data } = await http.post('/api/label/auto', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
-      img.labels = [...(img.labels || []), ...data.detections.map(d => ({
-        cls: d.cls,
-        x: d.x,
-        y: d.y,
-        w: d.w,
-        h: d.h,
-        conf: d.conf,
-      }))]
+      if (!img.labels) img.labels = []
+      data.detections.forEach(d => {
+        img.labels.push({
+          type: 'box',
+          cls: d.cls,
+          x: d.x,
+          y: d.y,
+          w: d.w,
+          h: d.h,
+          conf: d.conf,
+        })
+      })
     }
     if (currentImage.value) renderCanvas()
   } catch (e) {
@@ -507,28 +797,77 @@ async function runAutoLabel() {
   isAutoLabeling.value = false
 }
 
-// Export YOLO format
+// ==================== Export ====================
 function exportLabels() {
-  const lines = []
-  lines.push('# YOLO dataset export')
-  lines.push(`# Classes: ${classes.value.join(', ')}`)
-  lines.push('')
+  const classList = classes.value.join('\n')
+  downloadFile('classes.txt', classList)
 
-  // classes.txt
-  const classesContent = classes.value.join('\n')
-  downloadFile('classes.txt', classesContent)
-
-  // labels for each image
   images.value.forEach(img => {
     if (!img.labels || img.labels.length === 0) return
-    const labelLines = img.labels.map(l => {
+    const lines = img.labels.map(l => {
       const classIdx = classes.value.indexOf(l.cls)
+      if (l.type === 'polygon' && l.points) {
+        // YOLO segmentation format: class_idx x1 y1 x2 y2 ...
+        return classIdx + ' ' + l.points.map(p => p.x.toFixed(6) + ' ' + p.y.toFixed(6)).join(' ')
+      }
+      // YOLO bbox format: class_idx cx cy w h
       return `${classIdx} ${l.x.toFixed(6)} ${l.y.toFixed(6)} ${l.w.toFixed(6)} ${l.h.toFixed(6)}`
     })
-    downloadFile(img.name.replace(/\.[^.]+$/, '.txt'), labelLines.join('\n'))
+    downloadFile(img.name.replace(/\.[^.]+$/, '.txt'), lines.join('\n'))
+  })
+  alert(`Exported ${images.value.filter(i => i.labels?.length).length} image labels`)
+}
+
+function exportCOCO() {
+  const coco = {
+    images: [],
+    annotations: [],
+    categories: classes.value.map((name, i) => ({ id: i, name })),
+  }
+  let annId = 1
+
+  images.value.forEach((img, imgIdx) => {
+    if (!img.labels || img.labels.length === 0) return
+    coco.images.push({
+      id: imgIdx,
+      file_name: img.name,
+      width: img.width || 0,
+      height: img.height || 0,
+    })
+    img.labels.forEach(l => {
+      const classIdx = classes.value.indexOf(l.cls)
+      if (l.type === 'polygon' && l.points) {
+        const flat = l.points.flatMap(p => [
+          p.x * (img.width || 1),
+          p.y * (img.height || 1),
+        ])
+        // Compute bbox from polygon
+        const xs = l.points.map(p => p.x * (img.width || 1))
+        const ys = l.points.map(p => p.y * (img.height || 1))
+        const x = Math.min(...xs)
+        const y = Math.min(...ys)
+        const w = Math.max(...xs) - x
+        const h = Math.max(...ys) - y
+        coco.annotations.push({
+          id: annId++, image_id: imgIdx, category_id: classIdx,
+          segmentation: [flat], bbox: [x, y, w, h],
+          area: w * h, iscrowd: 0,
+        })
+      } else {
+        const x = (l.x - l.w / 2) * (img.width || 1)
+        const y = (l.y - l.h / 2) * (img.height || 1)
+        const w = l.w * (img.width || 1)
+        const h = l.h * (img.height || 1)
+        coco.annotations.push({
+          id: annId++, image_id: imgIdx, category_id: classIdx,
+          bbox: [x, y, w, h], area: w * h, iscrowd: 0,
+        })
+      }
+    })
   })
 
-  alert(`Exported labels for ${images.value.filter(i => i.labels?.length).length} images`)
+  downloadFile('annotations.json', JSON.stringify(coco, null, 2))
+  alert(`Exported COCO JSON with ${coco.annotations.length} annotations`)
 }
 
 function downloadFile(filename, content) {
@@ -546,9 +885,16 @@ function clearAll() {
   images.value = []
   currentIndex.value = -1
   loadedImages.clear()
+  undoStack.value = []
+  renderCanvas()
 }
 
+// ==================== Lifecycle ====================
 onMounted(() => {
   window.addEventListener('resize', () => renderCanvas())
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', () => renderCanvas())
 })
 </script>
