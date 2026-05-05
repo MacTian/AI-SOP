@@ -40,11 +40,11 @@ async def auto_label(file: UploadFile = File(...)):
     h, w = img.shape[:2]
 
     detections = []
-    for det in results:
-        x1, y1, x2, y2 = det["bbox"]
+    for det in results.detections:
+        x1, y1, x2, y2 = det.bbox
         detections.append({
-            "cls": det["class"],
-            "conf": det["confidence"],
+            "cls": det.class_name,
+            "conf": det.confidence,
             "type": "box",
             "x": ((x1 + x2) / 2) / w,
             "y": ((y1 + y2) / 2) / h,
@@ -72,21 +72,21 @@ async def batch_label(files: list[UploadFile] = File(...)):
             results.append({"filename": file.filename, "error": "Invalid image"})
             continue
 
-        detections = _detector.detect(img)
+        det_result = _detector.detect(img)
         h, w = img.shape[:2]
         results.append({
             "filename": file.filename,
             "detections": [
                 {
-                    "cls": d["class"],
-                    "conf": d["confidence"],
+                    "cls": d.class_name,
+                    "conf": d.confidence,
                     "type": "box",
-                    "x": ((d["bbox"][0] + d["bbox"][2]) / 2) / w,
-                    "y": ((d["bbox"][1] + d["bbox"][3]) / 2) / h,
-                    "w": (d["bbox"][2] - d["bbox"][0]) / w,
-                    "h": (d["bbox"][3] - d["bbox"][1]) / h,
+                    "x": ((d.bbox[0] + d.bbox[2]) / 2) / w,
+                    "y": ((d.bbox[1] + d.bbox[3]) / 2) / h,
+                    "w": (d.bbox[2] - d.bbox[0]) / w,
+                    "h": (d.bbox[3] - d.bbox[1]) / h,
                 }
-                for d in detections
+                for d in det_result.detections
             ],
         })
 

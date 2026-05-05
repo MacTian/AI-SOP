@@ -8,7 +8,7 @@
         <span class="text-sm text-gray-400">|</span>
         <span class="text-sm text-gray-500">{{ totalLabels }} labels</span>
         <span class="text-sm text-gray-400">|</span>
-        <span class="text-sm text-gray-500">{{ rectCount }} boxes, {{ polyCount }} polygons</span>
+        <span class="text-sm text-gray-500">{{ rectCount }} boxes, {{ rotRectCount }} rotRects, {{ circleCount }} circles, {{ polyCount }} polygons</span>
       </div>
     </div>
 
@@ -23,6 +23,16 @@
               class="px-2 py-1.5 text-xs rounded border text-center transition-colors"
               :class="tool === 'rectangle' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-50'">
               <span class="block text-base mb-0.5">▭</span>Box
+            </button>
+            <button @click="tool = 'rotatedRect'"
+              class="px-2 py-1.5 text-xs rounded border text-center transition-colors"
+              :class="tool === 'rotatedRect' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-50'">
+              <span class="block text-base mb-0.5">▰</span>RotRect
+            </button>
+            <button @click="tool = 'circle'"
+              class="px-2 py-1.5 text-xs rounded border text-center transition-colors"
+              :class="tool === 'circle' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 hover:bg-gray-50'">
+              <span class="block text-base mb-0.5">◯</span>Circle
             </button>
             <button @click="tool = 'polygon'"
               class="px-2 py-1.5 text-xs rounded border text-center transition-colors"
@@ -41,6 +51,8 @@
           </div>
           <p class="text-xs text-gray-400 mt-2 leading-tight">
             <template v-if="tool === 'rectangle'">Click & drag to draw box</template>
+            <template v-else-if="tool === 'rotatedRect'">Click center, drag to set width & angle, then drag to set height</template>
+            <template v-else-if="tool === 'circle'">Click center, drag to set radius</template>
             <template v-else-if="tool === 'polygon'">Click vertices, double-click to close</template>
             <template v-else-if="tool === 'select'">Click label to select & delete</template>
           </p>
@@ -135,6 +147,11 @@
             class="absolute bottom-3 left-3 bg-black/70 text-white text-xs px-2 py-1 rounded">
             Polygon: {{ currentPolygon.length }} vertices — double-click to close
           </div>
+          <div v-if="tool === 'rotatedRect' && isDrawingRotRect"
+            class="absolute bottom-3 left-3 bg-black/70 text-white text-xs px-2 py-1 rounded">
+            <template v-if="rotRectStep === 1">RotRect: drag to set width & angle</template>
+            <template v-else-if="rotRectStep === 2">RotRect: drag to set height — right-click to cancel</template>
+          </div>
         </div>
 
         <!-- Navigation -->
@@ -191,8 +208,12 @@
               :class="selectedLabelIndex === i ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'">
               <span class="w-2 h-2 rounded-sm"
                 :style="{ backgroundColor: classColors[classes.indexOf(label.cls) % classColors.length] }"></span>
-              <span class="flex-1 truncate">{{ label.cls }}</span>
-              <span class="text-gray-400 text-[10px]">{{ label.type === 'polygon' ? '⬠' : '▭' }}</span>
+              <span class="flex-1 truncate">
+                {{ label.cls }}<template v-if="label.type === 'rotatedRect' && label.angle !== undefined"> {{ (label.angle * 180 / Math.PI).toFixed(0) }}°</template>
+              </span>
+              <span class="text-gray-400 text-[10px]">
+                {{ label.type === 'polygon' ? '⬠' : label.type === 'rotatedRect' ? '▰' : label.type === 'circle' ? '◯' : '▭' }}
+              </span>
               <span class="text-gray-400 text-[10px]">{{ (label.conf * 100).toFixed(0) }}%</span>
             </div>
             <div v-if="currentLabels.length === 0" class="text-xs text-gray-400 text-center py-2">No labels</div>
@@ -244,7 +265,7 @@ const isAutoLabeling = ref(false)
 const classesYaml = ref('')
 const fileInput = ref(null)
 
-const tool = ref('rectangle') // 'rectangle' | 'polygon' | 'select'
+const tool = ref('rectangle') // 'rectangle' | 'rotatedRect' | 'circle' | 'polygon' | 'select'
 const zoom = ref(1)
 const panOffset = ref({ x: 0, y: 0 })
 
@@ -574,6 +595,83 @@ function finishPolygon() {
   currentPolygon.value = []
   renderCanvas()
 }
+
+// Helper: get the 4 corners of a rotated rectangle
+function getRotRectCorners(cx, cy, w, h, angle) {
+	  const cos = Math.cos(angle)
+	  const sin = Math.sin(angle)
+	  const hw = w / 2
+	  const hh = h / 2
+	  return [
+	    { x: cx + cos * hw - sin * hh, y: cy + sin * hw + cos * hh },
+	    { x: cx - cos * hw - sin * hh, y: cy - sin * hw + cos * hh },
+	    { x: cx - cos * hw + sin * hh, y: cy - sin * hw - cos * hh },
+	    { x: cx + cos * hw + sin * hh, y: cy + sin * hw - cos * hh },
+	  ]
+}
+
+// Helper: check point in rotated rectangle
+function pointInRotRect(pt, label, img) {
+	  const cx = label.x * img.naturalWidth
+	  const cy = label.y * img.naturalHeight
+	  const w = label.w * img.naturalWidth
+	  const h = label.h * img.naturalHeight
+	  const angle = label.angle || 0
+	  // Transform point into rect local space
+	  const cos = Math.cos(-angle)
+	  const sin = Math.sin(-angle)
+	  const dx = pt.x - cx
+	  const dy = pt.y - cy
+	  const lx = dx * cos - dy * sin
+	  const ly = dx * sin + dy * cos
+	  return Math.abs(lx) <= w / 2 && Math.abs(ly) <= h / 2
+}
+
+function finishRotatedRect(mouseCoords) {
+	  const img = loadedImages.get(currentImage.value.url)
+	  if (!img) {
+	    isDrawingRotRect.value = false
+	    rotRectStep.value = 0
+	    renderCanvas()
+	    return
+	  }
+
+	  // Calculate height from mouse position
+	  const cx = rotRectCenter.value.x
+	  const cy = rotRectCenter.value.y
+	  const angle = rotRectAngle.value
+
+	  // Project mouse-center vector onto the direction perpendicular to width
+	  const perpAngle = angle + Math.PI / 2
+	  const dx = mouseCoords.x - cx
+	  const dy = mouseCoords.y - cy
+	  const height = Math.abs(dx * Math.cos(perpAngle) + dy * Math.sin(perpAngle)) * 2
+
+	  if (rotRectWidth.value < 3 || height < 3) {
+	    isDrawingRotRect.value = false
+	    rotRectStep.value = 0
+	    renderCanvas()
+	    return
+	  }
+
+	  const label = {
+	    type: 'rotatedRect',
+	    cls: selectedClass.value,
+	    x: cx / img.naturalWidth,
+	    y: cy / img.naturalHeight,
+	    w: rotRectWidth.value / img.naturalWidth,
+	    h: height / img.naturalHeight,
+	    angle: angle,
+	    conf: 1.0,
+	  }
+	  if (!currentImage.value.labels) currentImage.value.labels = []
+	  currentImage.value.labels.push(label)
+	  selectedLabelIndex.value = currentImage.value.labels.length - 1
+
+	  isDrawingRotRect.value = false
+	  rotRectStep.value = 0
+	  renderCanvas()
+	}
 
 function deleteSelectedLabel() {
   if (selectedLabelIndex.value === null || !currentImage.value) return
