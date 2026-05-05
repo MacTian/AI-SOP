@@ -523,25 +523,48 @@ def _run_training(config: dict, dataset_dir: str):
                 _train_state["status"] = "stopped"
             return
 
-        # Save best model path
-        best_model = Path(results.save_dir) / "weights" / "best.pt"
-        if best_model.exists():
-            final_path = MODELS_DIR / f"{dataset_name}_best.pt"
-            shutil.copy2(best_model, final_path)
-            _log(f"Model saved: {final_path}")
+        # Training completed — save results (with error handling for post-training steps)
+        try:
+            best_model = Path(results.save_dir) / "weights" / "best.pt"
+            final_path = None
+            if best_model.exists():
+                final_path = MODELS_DIR / f"{dataset_name}_best.pt"
+                try:
+                    shutil.copy2(best_model, final_path)
+                except OSError:
+                    # copy2 can fail on NTFS/WSL2 — fallback to copy
+                    shutil.copy(best_model, final_path)
+                _log(f"Model saved: {final_path}")
+            else:
+                _log("WARNING: best.pt not found in training output")
 
-        with _train_lock:
-            _train_state["status"] = "completed"
-            _train_state["model_path"] = str(final_path) if best_model.exists() else None
-            _train_state["result"] = {
-                "map50": float(results.results_dict.get("metrics/mAP50(B)", 0)),
-                "map50_95": float(results.results_dict.get("metrics/mAP50-95(B)", 0)),
-                "elapsed": round(elapsed, 1),
-                "model_path": str(final_path) if best_model.exists() else None,
-            }
+            with _train_lock:
+                _train_state["status"] = "completed"
+                _train_state["model_path"] = str(final_path) if final_path else str(best_model)
+                _train_state["result"] = {
+                    "map50": float(results.results_dict.get("metrics/mAP50(B)", 0)),
+                    "map50_95": float(results.results_dict.get("metrics/mAP50-95(B)", 0)),
+                    "elapsed": round(elapsed, 1),
+                    "model_path": str(final_path) if final_path else str(best_model),
+                }
 
-        _log(f"Training completed in {elapsed:.0f}s ({elapsed / max(epochs, 1):.1f}s/epoch)")
-        _log(f"Final mAP50: {_train_state['result']['map50']:.4f}")
+            _log(f"Training completed in {elapsed:.0f}s ({elapsed / max(epochs, 1):.1f}s/epoch)")
+            _log(f"Final mAP50: {_train_state['result']['map50']:.4f}")
+
+        except Exception as post_e:
+            # Post-training save failed but training itself succeeded
+            logger.exception("Post-training save failed")
+            _log(f"Training finished but save failed: {post_e}")
+            with _train_lock:
+                _train_state["status"] = "completed"
+                _train_state["_warnings"].append(f"Save warning: {post_e}")
+                # Still report results even if copy failed
+                _train_state["result"] = {
+                    "map50": float(results.results_dict.get("metrics/mAP50(B)", 0)),
+                    "map50_95": float(results.results_dict.get("metrics/mAP50-95(B)", 0)),
+                    "elapsed": round(elapsed, 1),
+                    "model_path": str(best_model) if best_model.exists() else None,
+                }
 
     except Exception as e:
         logger.exception("Training failed")
