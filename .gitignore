@@ -29,3 +29,7 @@ Thumbs.db
 
 # Screenshots (runtime generated)
 screenshots/
+
+# Datasets and trained models (user-generated, large files)
+datasets/
+trained_models/

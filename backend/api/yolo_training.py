@@ -183,6 +183,38 @@ async def start_training(config: dict):
     return {"status": "started"}
 
 
+def _get_device(requested_device: str) -> str:
+    """Resolve training device with auto-detection and fallback.
+    Returns a valid device string for ultralytics.
+    """
+    import torch
+
+    if requested_device == "cpu":
+        _log("Device: CPU (user selected)")
+        return "cpu"
+
+    # User requested GPU — check availability
+    if not torch.cuda.is_available():
+        _log("WARNING: CUDA not available, falling back to CPU")
+        return "cpu"
+
+    # Parse device index
+    try:
+        device_idx = int(requested_device)
+    except (ValueError, TypeError):
+        device_idx = 0
+
+    gpu_count = torch.cuda.device_count()
+    if device_idx >= gpu_count:
+        _log(f"WARNING: GPU {device_idx} not found ({gpu_count} GPU(s)), using GPU 0")
+        device_idx = 0
+
+    gpu_name = torch.cuda.get_device_name(device_idx)
+    gpu_mem = torch.cuda.get_device_properties(device_idx).total_memory // (1024**3)
+    _log(f"Device: GPU {device_idx} — {gpu_name} ({gpu_mem} GB)")
+    return str(device_idx)
+
+
 def _run_training(config: dict, dataset_dir: str):
     """Run YOLO training in background thread."""
     try:
@@ -193,8 +225,10 @@ def _run_training(config: dict, dataset_dir: str):
         batch = config.get("batch", 16)
         imgsz = config.get("imgsz", 640)
         lr = config.get("lr", 0.01)
-        device = config.get("device", "cpu")
         dataset_name = config.get("dataset_name", "sop_dataset")
+
+        # Resolve device with auto-detection
+        device = _get_device(config.get("device", "cpu"))
 
         # Try to download pre-trained model from China mirror first
         model_path = _download_pretrained(model_name)
@@ -311,6 +345,27 @@ def _download_pretrained(model_name: str) -> str:
 
     # Fallback: let ultralytics handle it
     return model_name
+
+
+@router.get("/gpu-info")
+async def get_gpu_info():
+    """Get GPU availability and info for the training UI."""
+    import torch
+    info = {
+        "cuda_available": torch.cuda.is_available(),
+        "gpu_count": torch.cuda.device_count() if torch.cuda.is_available() else 0,
+        "gpus": [],
+    }
+    if torch.cuda.is_available():
+        for i in range(torch.cuda.device_count()):
+            props = torch.cuda.get_device_properties(i)
+            info["gpus"].append({
+                "index": i,
+                "name": props.name,
+                "memory_gb": round(props.total_memory / (1024**3), 1),
+                "compute_capability": f"{props.major}.{props.minor}",
+            })
+    return info
 
 
 @router.get("/status")

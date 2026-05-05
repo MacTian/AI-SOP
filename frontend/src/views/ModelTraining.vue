@@ -44,8 +44,16 @@
               <label class="block text-sm text-gray-600 mb-1">Device</label>
               <select v-model="config.device" class="w-full border rounded px-2 py-1.5 text-sm">
                 <option value="cpu">CPU</option>
-                <option value="0">GPU 0</option>
+                <option v-for="gpu in gpuInfo.gpus" :key="gpu.index" :value="gpu.index">
+                  GPU {{ gpu.index }} — {{ gpu.name }} ({{ gpu.memory_gb }} GB)
+                </option>
               </select>
+              <p v-if="!gpuInfo.cuda_available" class="text-xs text-orange-500 mt-1">
+                ⚠ CUDA not available — training will use CPU
+              </p>
+              <p v-else class="text-xs text-green-600 mt-1">
+                ✓ {{ gpuInfo.gpu_count }} GPU(s) detected
+              </p>
             </div>
           </div>
         </div>
@@ -227,6 +235,9 @@ const config = ref({
   dataset_name: 'sop_dataset',
   train_ratio: 0.8,
 })
+
+// GPU info
+const gpuInfo = ref({ cuda_available: false, gpu_count: 0, gpus: [] })
 
 // State
 const isTraining = ref(false)
@@ -444,10 +455,21 @@ async function useModel() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('resize', updateChart)
   // Check status in case training is already running
   pollStatus()
+  // Fetch GPU info
+  try {
+    const { data } = await http.get('/api/training/yolo/gpu-info')
+    gpuInfo.value = data
+    // Auto-select GPU 0 if available
+    if (data.cuda_available && data.gpu_count > 0) {
+      config.value.device = '0'
+    }
+  } catch (err) {
+    console.error('Failed to fetch GPU info:', err)
+  }
 })
 
 onUnmounted(() => {
