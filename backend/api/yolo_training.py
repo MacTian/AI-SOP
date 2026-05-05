@@ -101,19 +101,23 @@ async def upload_dataset(
         raise HTTPException(status_code=400, detail="Dataset must contain an 'images/' directory")
 
     if not data_yaml.exists():
-        # Auto-generate data.yaml
-        classes = _detect_classes(labels_dir)
-        # Detect if any label file has polygon format (>5 values per line)
+        # Auto-generate data.yaml with proper class detection
+        names, needs_remap = _detect_classes(dataset_dir, labels_dir)
         is_segmentation = _detect_segmentation(labels_dir)
+
+        # Build YAML content with proper formatting
+        names_str = ", ".join(f"'{n}'" for n in names)
         yaml_content = f"""# Auto-generated data.yaml
 path: {dataset_dir}
 train: images
 val: images
-nc: {len(classes)}
-names: {classes}
+nc: {len(names)}
+names: [{names_str}]
 """
         if is_segmentation:
             yaml_content += "# Format: segmentation (polygon)\n"
+        if needs_remap:
+            yaml_content += f"# WARNING: Label class IDs are not 0-indexed — will be remapped during training\n"
         with open(data_yaml, "w") as f:
             f.write(yaml_content)
 
@@ -126,9 +130,57 @@ names: {classes}
     return {"status": "ok", "dataset_name": dataset_name, "image_count": image_count, "path": str(dataset_dir)}
 
 
-def _detect_classes(labels_dir: Path) -> list:
-    """Detect class IDs from label files (bbox or polygon format)."""
-    classes = set()
+def _load_classes_txt(dataset_dir: Path) -> list | None:
+    """Load class names from classes.txt if it exists.
+    Returns list of names, or None if not found.
+    """
+    for path in [dataset_dir / "classes.txt", dataset_dir / "labels" / "classes.txt"]:
+        if path.exists():
+            names = []
+            with open(path) as f:
+                for line in f:
+                    name = line.strip()
+                    if name:
+                        names.append(name)
+            return names if names else None
+    return None
+
+
+def _detect_classes(dataset_dir: Path, labels_dir: Path) -> tuple[list, bool]:
+    """Detect class names and whether remapping is needed.
+
+    Returns (names, needs_remap):
+      - names: list of class name strings indexed by class ID
+      - needs_remap: True if label IDs don't start at 0 or have gaps
+
+    Strategy:
+      1. If classes.txt exists, use it as the authoritative source.
+      2. Otherwise, derive from label file IDs.
+      3. Detect if label IDs need remapping to 0-indexed.
+    """
+    # Try classes.txt first
+    names_from_file = _load_classes_txt(dataset_dir)
+    if names_from_file:
+        names = names_from_file
+    else:
+        # Derive from label file IDs
+        ids = set()
+        if labels_dir.exists():
+            for f in labels_dir.rglob("*.txt"):
+                if f.name == "classes.txt":
+                    continue
+                with open(f) as fh:
+                    for line in fh:
+                        parts = line.strip().split()
+                        if parts:
+                            try:
+                                ids.add(int(parts[0]))
+                            except ValueError:
+                                pass
+        names = [str(i) for i in sorted(ids)] if ids else ["0"]
+
+    # Find the actual max class ID used in labels
+    max_id = len(names) - 1
     if labels_dir.exists():
         for f in labels_dir.rglob("*.txt"):
             if f.name == "classes.txt":
@@ -138,10 +190,34 @@ def _detect_classes(labels_dir: Path) -> list:
                     parts = line.strip().split()
                     if parts:
                         try:
-                            classes.add(int(parts[0]))
+                            cid = int(parts[0])
+                            if cid > max_id:
+                                max_id = cid
                         except ValueError:
                             pass
-    return [str(i) for i in sorted(classes)] if classes else ["0"]
+
+    # Extend names list if label IDs exceed current names
+    if max_id >= len(names):
+        names = names + [str(i) for i in range(len(names), max_id + 1)]
+
+    # Check if remapping is needed (IDs don't start at 0 or have gaps)
+    ids_set = set()
+    if labels_dir.exists():
+        for f in labels_dir.rglob("*.txt"):
+            if f.name == "classes.txt":
+                continue
+            with open(f) as fh:
+                for line in fh:
+                    parts = line.strip().split()
+                    if parts:
+                        try:
+                            ids_set.add(int(parts[0]))
+                        except ValueError:
+                            pass
+
+    needs_remap = bool(ids_set) and (min(ids_set) != 0 or len(ids_set) != (max(ids_set) + 1))
+
+    return names, needs_remap
 
 
 def _detect_segmentation(labels_dir: Path) -> bool:
@@ -226,6 +302,104 @@ def _get_device(requested_device: str) -> str:
     return str(device_idx)
 
 
+def _remap_labels_if_needed(dataset_dir: Path, data_yaml: Path) -> Path:
+    """Remap label class IDs to 0-indexed contiguous range if needed.
+
+    YOLO requires class IDs to be 0, 1, ..., nc-1. If labels use non-contiguous
+    or non-zero-starting IDs (e.g. 5,6,7,8,9), this creates a remapped copy.
+
+    Returns the path to the (possibly remapped) label directory.
+    """
+    labels_dir = dataset_dir / "labels"
+    if not labels_dir.exists():
+        return labels_dir
+
+    # Collect all class IDs
+    all_ids = set()
+    label_files = []
+    for f in labels_dir.rglob("*.txt"):
+        if f.name == "classes.txt":
+            continue
+        if f.is_file():
+            label_files.append(f)
+            with open(f) as fh:
+                for line in fh:
+                    parts = line.strip().split()
+                    if parts:
+                        try:
+                            all_ids.add(int(parts[0]))
+                        except ValueError:
+                            pass
+
+    if not all_ids:
+        return labels_dir
+
+    sorted_ids = sorted(all_ids)
+    # Check if already 0-indexed contiguous
+    if sorted_ids[0] == 0 and len(sorted_ids) == sorted_ids[-1] + 1:
+        return labels_dir  # No remapping needed
+
+    # Build remapping: old_id -> new_id
+    id_map = {old: new for new, old in enumerate(sorted_ids)}
+    _log(f"Remapping class IDs: {id_map}")
+
+    # Backup original labels, then replace in-place with remapped IDs
+    backup_dir = dataset_dir / "_labels_backup"
+    if backup_dir.exists():
+        shutil.rmtree(backup_dir)
+    shutil.copytree(labels_dir, backup_dir)
+    _log(f"Backed up original labels to: {backup_dir}")
+
+    remapped_count = 0
+    for f in label_files:
+        lines = []
+        with open(f) as fh:
+            for line in fh:
+                parts = line.strip().split()
+                if parts:
+                    try:
+                        old_id = int(parts[0])
+                        parts[0] = str(id_map[old_id])
+                        lines.append(" ".join(parts) + "\n")
+                        remapped_count += 1
+                    except (ValueError, KeyError):
+                        lines.append(line)
+                else:
+                    lines.append(line)
+        with open(f, "w") as oh:
+            oh.writelines(lines)
+
+    _log(f"Remapped {remapped_count} label entries across {len(label_files)} files (in-place)")
+
+    # Update data.yaml: fix nc and names to match new 0-indexed IDs
+    if data_yaml.exists():
+        import yaml
+        with open(data_yaml) as f:
+            ydata = yaml.safe_load(f)
+        ydata["nc"] = len(sorted_ids)
+
+        # Get real class names: prefer classes.txt, fallback to data.yaml names
+        real_names = _load_classes_txt(dataset_dir)
+        orig_names = ydata.get("names", [])
+
+        new_names = [""] * len(sorted_ids)
+        for old_id, new_id in id_map.items():
+            if real_names and old_id < len(real_names):
+                # Use real name from classes.txt
+                new_names[new_id] = real_names[old_id]
+            elif isinstance(orig_names, list) and old_id < len(orig_names):
+                new_names[new_id] = orig_names[old_id]
+            else:
+                new_names[new_id] = str(old_id)
+        ydata["names"] = new_names
+        ydata["path"] = str(dataset_dir)
+        with open(data_yaml, "w") as f:
+            yaml.dump(ydata, f, default_flow_style=False, allow_unicode=True)
+        _log(f"Updated data.yaml: nc={len(sorted_ids)}, names={ydata.get('names', [])}")
+
+    return labels_dir
+
+
 def _run_training(config: dict, dataset_dir: str):
     """Run YOLO training in background thread."""
     try:
@@ -278,6 +452,9 @@ def _run_training(config: dict, dataset_dir: str):
 
         if not data_yaml.exists():
             raise FileNotFoundError(f"data.yaml not found in {dataset_dir}")
+
+        # Remap label class IDs if they're not 0-indexed contiguous
+        _remap_labels_if_needed(Path(dataset_dir), data_yaml)
 
         output_dir = MODELS_DIR / f"{dataset_name}_{int(time.time())}"
         output_dir.mkdir(parents=True, exist_ok=True)
