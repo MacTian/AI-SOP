@@ -415,7 +415,7 @@ def _run_training(config: dict, dataset_dir: str):
     try:
         from ultralytics import YOLO
 
-        model_name = config.get("model", "yolov8n.pt")
+        model_name = config.get("model", "yolo26n.pt")
         epochs = config.get("epochs", 50)
         batch = config.get("batch", 16)
         imgsz = config.get("imgsz", 640)
@@ -608,7 +608,7 @@ def _download_pretrained(model_name: str) -> str:
     model_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Try China mirror first
-    china_url = f"https://ghfast.top/https://github.com/ultralytics/assets/releases/download/v8.3.0/{model_name}"
+    china_url = f"https://ghfast.top/https://github.com/ultralytics/assets/releases/download/v8.4.0/{model_name}"
     try:
         _log(f"Downloading {model_name} from China mirror...")
         import urllib.request

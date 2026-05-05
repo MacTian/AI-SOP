@@ -12,9 +12,16 @@
             <div>
               <label class="block text-sm text-gray-600 mb-1">Model</label>
               <select v-model="config.model" class="w-full border rounded px-2 py-1.5 text-sm">
-                <option value="yolov8n.pt">YOLOv8n (nano)</option>
-                <option value="yolov8s.pt">YOLOv8s (small)</option>
-                <option value="yolov8m.pt">YOLOv8m (medium)</option>
+                <optgroup label="YOLOv26 (recommended)">
+                  <option value="yolo26n.pt">YOLOv26n (nano) — 2.6M params, fastest</option>
+                  <option value="yolo26s.pt">YOLOv26s (small) — best balance</option>
+                  <option value="yolo26m.pt">YOLOv26m (medium) — high accuracy</option>
+                </optgroup>
+                <optgroup label="YOLOv8 (legacy)">
+                  <option value="yolov8n.pt">YOLOv8n (nano) — 3.2M params</option>
+                  <option value="yolov8s.pt">YOLOv8s (small) — 11.2M params</option>
+                  <option value="yolov8m.pt">YOLOv8m (medium) — 25.9M params</option>
+                </optgroup>
               </select>
             </div>
             <div>
@@ -240,7 +247,7 @@ import http from '../api/http'
 
 // Config
 const config = ref({
-  model: 'yolov8n.pt',
+  model: 'yolo26n.pt',
   epochs: 50,
   batch: 16,
   imgsz: 640,

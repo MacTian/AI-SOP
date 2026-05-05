@@ -34,7 +34,7 @@ class DetectionResult:
 class Detector:
     """YOLO-based object detector.
 
-    Loads a real YOLOv8 model if available, otherwise falls back to mock.
+    Loads a real YOLO model (v8 or v26) if available, otherwise falls back to mock.
     """
 
     def __init__(self):
@@ -51,14 +51,16 @@ class Detector:
         try:
             from ultralytics import YOLO
             if Path(path).exists():
-                self._model = YOLO(path)
+                # task="detect" + verbose=False skips ultralytics
+                # network verification when loading local model files
+                self._model = YOLO(path, task="detect", verbose=False)
             else:
                 # Download default model if not exists
-                logger.info(f"Model {path} not found, downloading yolov8n.pt...")
-                self._model = YOLO("yolov8n.pt")
+                logger.info(f"Model {path} not found, downloading {path}...")
+                self._model = YOLO(path, task="detect", verbose=False)
             self._class_names = list(self._model.names.values())
             self._is_mock = False
-            logger.info(f"YOLO model loaded: {len(self._class_names)} classes")
+            logger.info(f"YOLO model loaded: {len(self._class_names)} classes from {path}")
         except ImportError:
             logger.warning("ultralytics not installed, using mock detector")
             self._init_mock()

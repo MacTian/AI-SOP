@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     camera_height: int = 480
 
     # Inference
-    model_path: str = "models/yolov8n.pt"
+    model_path: str = "yolo26n.pt"
     confidence_threshold: float = 0.5
     inference_interval: float = 0.5  # seconds between inferences
 
