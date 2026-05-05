@@ -39,9 +39,19 @@ _train_state = {
 # Base directories
 BASE_DIR = Path(__file__).parent.parent.parent
 DATASETS_DIR = BASE_DIR / "datasets"
-MODELS_DIR = BASE_DIR / "trained_models"
-DATASETS_DIR.mkdir(exist_ok=True)
-MODELS_DIR.mkdir(exist_ok=True)
+
+# Trained models output directory.
+# Default to WSL2 native filesystem to avoid intermittent NTFS permission errors
+# caused by Windows Defender real-time scanning locking files during writes.
+# Override with SOP_MODELS_DIR env var to use a different location.
+import tempfile as _tmp
+_env_models = os.environ.get("SOP_MODELS_DIR")
+if _env_models:
+    MODELS_DIR = Path(_env_models)
+else:
+    # Use WSL2 native tmpfs — fast and no NTFS issues
+    MODELS_DIR = Path(_tmp.gettempdir()) / "sop_trained_models"
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 # China mirror for Ultralytics models
 CHINA_MIRROR = "https://pypi.tuna.tsinghua.edu.cn"
@@ -567,12 +577,17 @@ def _run_training(config: dict, dataset_dir: str):
                 }
 
     except Exception as e:
+        import traceback as _tb
         logger.exception("Training failed")
         err_msg = str(e)
+        tb_str = _tb.format_exc()
         with _train_lock:
             _train_state["status"] = "error"
             _train_state["_warnings"].append(f"Error: {err_msg}")
         _log(f"Training failed: {err_msg}")
+        # Log full traceback for debugging
+        for line in tb_str.strip().split('\n'):
+            _log(f"  {line}")
         # Provide actionable hints for common errors
         if "CUDA out of memory" in err_msg:
             _log("HINT: Try reducing batch size or image size")
@@ -580,6 +595,8 @@ def _run_training(config: dict, dataset_dir: str):
             _log("HINT: Check dataset structure — need images/ and labels/ directories")
         elif "not enough memory" in err_msg.lower():
             _log("HINT: Close other applications or reduce batch size")
+        elif "Permission denied" in err_msg:
+            _log("HINT: Output directory is on /mnt/e/ (Windows NTFS) — check antivirus / file locking")
 
 
 def _download_pretrained(model_name: str) -> str:
