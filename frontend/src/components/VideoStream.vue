@@ -25,13 +25,10 @@
       />
       <div v-else class="text-gray-400 text-sm">Stream paused</div>
       <div
-        v-if="connectionError"
-        class="absolute inset-0 flex items-center justify-center bg-black/60"
+        v-if="connectionError && streaming"
+        class="absolute bottom-2 left-2 bg-red-600/80 text-white text-xs px-2 py-1 rounded"
       >
-        <div class="text-white text-center">
-          <div class="text-lg mb-1">Camera Unavailable</div>
-          <div class="text-sm text-gray-300">Check camera connection</div>
-        </div>
+        Camera Disconnected
       </div>
     </div>
   </div>

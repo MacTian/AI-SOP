@@ -176,8 +176,22 @@
 
         <!-- Training Log -->
         <div class="bg-white rounded-lg shadow-sm border p-4">
-          <h3 class="font-medium mb-3">Training Log</h3>
-          <div class="bg-gray-900 text-green-400 rounded p-3 h-48 overflow-y-auto font-mono text-xs">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="font-medium">Training Log</h3>
+            <span v-if="logs.length > 0" class="text-xs text-gray-400">{{ logs.length }} lines</span>
+          </div>
+          <!-- Warnings / Hints -->
+          <div v-if="warnings.length > 0" class="mb-3 space-y-1">
+            <div
+              v-for="(w, i) in warnings"
+              :key="i"
+              class="text-xs px-3 py-2 rounded"
+              :class="w.startsWith('Error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-yellow-50 text-yellow-700 border border-yellow-200'"
+            >
+              ⚠ {{ w }}
+            </div>
+          </div>
+          <div class="bg-gray-900 text-green-400 rounded p-3 h-48 overflow-y-auto font-mono text-xs" ref="logContainer">
             <div v-for="(line, i) in logs" :key="i" class="leading-relaxed">
               {{ line }}
             </div>
@@ -246,6 +260,9 @@ const datasetUploaded = ref(false)
 const datasetInput = ref(null)
 const trainingResult = ref(null)
 const logs = ref([])
+const warnings = ref([])
+const logOffset = ref(0)
+const elapsedTime = ref(null)
 const metrics = ref({
   box_loss: null,
   cls_loss: null,
@@ -254,6 +271,7 @@ const metrics = ref({
 })
 const epochHistory = ref([])
 const chartCanvas = ref(null)
+const logContainer = ref(null)
 let pollInterval = null
 let chartInstance = null
 
@@ -263,7 +281,14 @@ const progressPercent = computed(() => {
 })
 
 const statusText = computed(() => {
-  if (isTraining.value) return 'Training'
+  if (isTraining.value) {
+    if (elapsedTime.value !== null) {
+      const mins = Math.floor(elapsedTime.value / 60)
+      const secs = elapsedTime.value % 60
+      return `Training (${mins}m ${secs}s)`
+    }
+    return 'Training'
+  }
   if (trainingResult.value) return 'Completed'
   return 'Idle'
 })
@@ -305,13 +330,14 @@ async function startTraining() {
   trainingResult.value = null
   epochHistory.value = []
   logs.value = []
+  warnings.value = []
+  logOffset.value = 0
+  elapsedTime.value = null
   metrics.value = { box_loss: null, cls_loss: null, map50: null, map50_95: null }
 
   try {
     await http.post('/api/training/yolo/start', config.value)
-    logs.value.push('[INFO] Training started')
-    logs.value.push(`[INFO] Model: ${config.value.model}, Epochs: ${config.value.epochs}`)
-    logs.value.push(`[INFO] Downloading pre-trained model from China mirror...`)
+    logOffset.value = 0  // Reset offset so first poll gets all logs from 0
     startPolling()
   } catch (err) {
     isTraining.value = false
@@ -344,8 +370,11 @@ function stopPolling() {
 
 async function pollStatus() {
   try {
-    const { data } = await http.get('/api/training/yolo/status')
+    const { data } = await http.get('/api/training/yolo/status', {
+      params: { offset: logOffset.value }
+    })
     currentEpoch.value = data.current_epoch || 0
+    elapsedTime.value = data.elapsed
 
     if (data.latest_metrics) {
       metrics.value = { ...metrics.value, ...data.latest_metrics }
@@ -353,13 +382,20 @@ async function pollStatus() {
       updateChart()
     }
 
+    // Append only new log lines and update offset
     if (data.logs && data.logs.length > 0) {
       logs.value.push(...data.logs)
-      // Auto-scroll
+      logOffset.value = data.log_total || (logOffset.value + data.logs.length)
+      // Auto-scroll to bottom
       nextTick(() => {
-        const el = document.querySelector('.bg-gray-900')
+        const el = logContainer.value
         if (el) el.scrollTop = el.scrollHeight
       })
+    }
+
+    // Update warnings from server
+    if (data.warnings && data.warnings.length > 0) {
+      warnings.value = data.warnings
     }
 
     if (data.status === 'completed' || data.status === 'stopped' || data.status === 'error') {

@@ -25,11 +25,15 @@ _train_state = {
     "total_epochs": 0,
     "latest_metrics": None,
     "logs": [],
+    "log_count": 0,       # total lines ever logged (for offset tracking)
     "result": None,
     "model_path": None,
     "dataset_dir": None,
     "_stop_flag": False,
     "_thread": None,
+    "_last_progress_time": None,  # timestamp of last epoch / log activity
+    "_start_time": None,
+    "_warnings": [],       # stall / issue hints for the frontend
 }
 
 # Base directories
@@ -45,7 +49,10 @@ ULTRALYTICS_MIRROR = "https://ghfast.top/https://github.com"
 
 
 def _log(msg: str):
-    _train_state["logs"].append(f"[{time.strftime('%H:%M:%S')}] {msg}")
+    ts = time.strftime('%H:%M:%S')
+    _train_state["logs"].append(f"[{ts}] {msg}")
+    _train_state["log_count"] = len(_train_state["logs"])
+    _train_state["_last_progress_time"] = time.time()
     logger.info(msg)
 
 
@@ -172,8 +179,12 @@ async def start_training(config: dict):
         _train_state["total_epochs"] = config.get("epochs", 50)
         _train_state["latest_metrics"] = None
         _train_state["logs"] = []
+        _train_state["log_count"] = 0
         _train_state["result"] = None
         _train_state["_stop_flag"] = False
+        _train_state["_last_progress_time"] = time.time()
+        _train_state["_start_time"] = time.time()
+        _train_state["_warnings"] = []
 
     # Start training in background thread
     thread = threading.Thread(target=_run_training, args=(config, dataset_dir), daemon=True)
@@ -229,6 +240,17 @@ def _run_training(config: dict, dataset_dir: str):
 
         # Resolve device with auto-detection
         device = _get_device(config.get("device", "cpu"))
+        use_gpu = device != "cpu"
+
+        # Auto-tune batch size for GPU: scale up for better utilization
+        # but cap to avoid OOM on smaller GPUs
+        if use_gpu:
+            import torch
+            gpu_mem_gb = torch.cuda.get_device_properties(int(device)).total_memory / (1024**3)
+            if batch <= 16 and gpu_mem_gb >= 8:
+                auto_batch = min(32, max(16, int(gpu_mem_gb * 2.5)))
+                _log(f"Auto-tuning batch: {batch} → {auto_batch} (GPU has {gpu_mem_gb:.0f} GB)")
+                batch = auto_batch
 
         # Try to download pre-trained model from China mirror first
         model_path = _download_pretrained(model_name)
@@ -239,6 +261,14 @@ def _run_training(config: dict, dataset_dir: str):
         _log(f"Dataset: {dataset_dir}")
         _log(f"Config: epochs={epochs}, batch={batch}, imgsz={imgsz}, lr={lr}, device={device}")
 
+        # Count images for info
+        images_dir = Path(dataset_dir) / "images"
+        if images_dir.exists():
+            img_count = sum(1 for _ in images_dir.rglob("*") if _.suffix.lower() in (".jpg", ".jpeg", ".png", ".bmp"))
+            _log(f"Training images found: {img_count}")
+            if img_count == 0:
+                _log("WARNING: No images found in dataset — training will fail")
+
         data_yaml = Path(dataset_dir) / "data.yaml"
         if not data_yaml.exists():
             for sub in Path(dataset_dir).iterdir():
@@ -246,36 +276,49 @@ def _run_training(config: dict, dataset_dir: str):
                     data_yaml = sub / "data.yaml"
                     break
 
+        if not data_yaml.exists():
+            raise FileNotFoundError(f"data.yaml not found in {dataset_dir}")
+
         output_dir = MODELS_DIR / f"{dataset_name}_{int(time.time())}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         with _train_lock:
             _train_state["status"] = "training"
 
-        # Custom callback to capture metrics
+        # Custom callback to capture metrics after each epoch
+        epoch_start_time = [time.time()]
+
+        def on_epoch_start(trainer):
+            epoch_start_time[0] = time.time()
+
         def on_epoch_end(trainer):
             if _stop_requested():
                 trainer.stop = True
                 return
+            epoch_elapsed = time.time() - epoch_start_time[0]
             metrics = trainer.validator.metrics
             with _train_lock:
                 _train_state["current_epoch"] = trainer.epoch + 1
                 _train_state["latest_metrics"] = {
                     "box_loss": float(trainer.loss_items[0]) if trainer.loss_items is not None else None,
                     "cls_loss": float(trainer.loss_items[1]) if trainer.loss_items is not None else None,
+                    "dfl_loss": float(trainer.loss_items[2]) if trainer.loss_items is not None and len(trainer.loss_items) > 2 else None,
                     "map50": float(metrics.map50) if hasattr(metrics, "map50") else None,
                     "map50_95": float(metrics.map50_95) if hasattr(metrics, "map50_95") else None,
                 }
-            _log(f"Epoch {trainer.epoch + 1}/{epochs}: "
-                 f"box_loss={_train_state['latest_metrics']['box_loss']:.4f}, "
-                 f"mAP50={_train_state['latest_metrics']['map50']:.4f}")
+            m = _train_state['latest_metrics']
+            _log(f"Epoch {trainer.epoch + 1}/{epochs} ({epoch_elapsed:.0f}s): "
+                 f"box_loss={m['box_loss']:.4f} cls_loss={m['cls_loss']:.4f} "
+                 f"mAP50={m['map50']:.4f} mAP50-95={m['map50_95']:.4f}")
 
+        model.add_callback("on_epoch_start", on_epoch_start)
         model.add_callback("on_epoch_end", on_epoch_end)
 
         _log("Starting training...")
         t0 = time.time()
 
-        results = model.train(
+        # Build training kwargs — enable workers and AMP for GPU
+        train_kwargs = dict(
             data=str(data_yaml),
             epochs=epochs,
             batch=batch,
@@ -286,7 +329,14 @@ def _run_training(config: dict, dataset_dir: str):
             name="train",
             exist_ok=True,
             verbose=False,
+            # Performance settings
+            workers=4 if use_gpu else 0,
+            amp=use_gpu,          # Automatic Mixed Precision — faster on GPU
+            cache="ram" if use_gpu else False,  # Cache images in RAM for faster loading
+            patience=50,          # early stopping patience
         )
+
+        results = model.train(**train_kwargs)
 
         elapsed = time.time() - t0
 
@@ -313,15 +363,23 @@ def _run_training(config: dict, dataset_dir: str):
                 "model_path": str(final_path) if best_model.exists() else None,
             }
 
-        _log(f"Training completed in {elapsed:.0f}s")
+        _log(f"Training completed in {elapsed:.0f}s ({elapsed / max(epochs, 1):.1f}s/epoch)")
         _log(f"Final mAP50: {_train_state['result']['map50']:.4f}")
 
     except Exception as e:
         logger.exception("Training failed")
+        err_msg = str(e)
         with _train_lock:
             _train_state["status"] = "error"
-            _train_state["logs"].append(f"[ERROR] {str(e)}")
-        _log(f"Training failed: {e}")
+            _train_state["_warnings"].append(f"Error: {err_msg}")
+        _log(f"Training failed: {err_msg}")
+        # Provide actionable hints for common errors
+        if "CUDA out of memory" in err_msg:
+            _log("HINT: Try reducing batch size or image size")
+        elif "No labels found" in err_msg or "No images found" in err_msg:
+            _log("HINT: Check dataset structure — need images/ and labels/ directories")
+        elif "not enough memory" in err_msg.lower():
+            _log("HINT: Close other applications or reduce batch size")
 
 
 def _download_pretrained(model_name: str) -> str:
@@ -369,16 +427,48 @@ async def get_gpu_info():
 
 
 @router.get("/status")
-async def get_training_status():
-    """Get current training status and metrics."""
+async def get_training_status(offset: int = 0):
+    """Get current training status and metrics.
+    offset: return only log lines after this index (for deduplication).
+    """
+    import time as _time
     with _train_lock:
+        all_logs = _train_state["logs"]
+        total = len(all_logs)
+        # Return only new lines since offset
+        if offset < total:
+            new_logs = all_logs[offset:]
+        else:
+            new_logs = []
+
+        # Auto-detect stalls: if training and no progress for 120s
+        warnings = list(_train_state["_warnings"])
+        elapsed_total = None
+        if _train_state["_start_time"]:
+            elapsed_total = round(_time.time() - _train_state["_start_time"], 1)
+
+        if _train_state["status"] == "training" and _train_state["_last_progress_time"]:
+            idle_seconds = _time.time() - _train_state["_last_progress_time"]
+            if idle_seconds > 120:
+                stall_msg = f"No progress for {int(idle_seconds)}s — training may be stuck (check GPU memory / data loading)"
+                if stall_msg not in warnings:
+                    warnings.append(stall_msg)
+            elif idle_seconds > 60:
+                slow_msg = f"Slow progress — last update {int(idle_seconds)}s ago"
+                if slow_msg not in warnings:
+                    warnings.append(slow_msg)
+
         return {
             "status": _train_state["status"],
             "current_epoch": _train_state["current_epoch"],
             "total_epochs": _train_state["total_epochs"],
             "latest_metrics": _train_state["latest_metrics"],
-            "logs": _train_state["logs"][-50:],  # Last 50 lines
+            "logs": new_logs,
+            "log_offset": offset,
+            "log_total": total,
             "result": _train_state["result"],
+            "warnings": warnings,
+            "elapsed": elapsed_total,
         }
 
 

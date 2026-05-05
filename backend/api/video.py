@@ -41,14 +41,46 @@ def set_multi_camera(multi_camera):
     _multi_camera = multi_camera
 
 
+def _make_placeholder_frame(width=640, height=480, text="No Camera"):
+    """Generate a placeholder JPEG frame when camera is unavailable."""
+    import cv2
+    import numpy as np
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+    # Dark gray background
+    frame[:] = (40, 40, 40)
+    # Draw text
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    text_size = cv2.getTextSize(text, font, 1.0, 2)[0]
+    x = (width - text_size[0]) // 2
+    y = (height + text_size[1]) // 2
+    cv2.putText(frame, text, (x, y), font, 1.0, (180, 180, 180), 2)
+    # Draw camera icon hint
+    hint = "Check camera connection"
+    hint_size = cv2.getTextSize(hint, font, 0.5, 1)[0]
+    hx = (width - hint_size[0]) // 2
+    cv2.putText(frame, hint, (hx, y + 40), font, 0.5, (120, 120, 120), 1)
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    return buf.tobytes()
+
+
 async def generate_mjpeg():
     """Generate MJPEG stream with detection boxes overlaid."""
     import cv2
 
+    no_cam_sent = False
     while True:
         if _capture is None or not _capture.is_running:
-            await asyncio.sleep(0.5)
+            # Send a placeholder frame so the browser <img> tag gets data
+            jpeg_bytes = _make_placeholder_frame(text="Camera Unavailable")
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n"
+            )
+            no_cam_sent = True
+            await asyncio.sleep(1.0)
             continue
+
+        no_cam_sent = False
 
         # Prefer annotated frame (with detection boxes)
         frame = None
@@ -59,7 +91,13 @@ async def generate_mjpeg():
         if frame is None:
             raw = _capture.get_frame()
             if raw is None:
-                await asyncio.sleep(0.1)
+                # Camera running but no frame yet — send placeholder
+                jpeg_bytes = _make_placeholder_frame(text="Waiting for camera...")
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n"
+                )
+                await asyncio.sleep(0.2)
                 continue
             if _preprocessor:
                 frame = _preprocessor.process(raw)

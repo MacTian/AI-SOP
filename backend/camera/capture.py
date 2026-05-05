@@ -74,13 +74,23 @@ class CameraCapture:
 
     def _capture_loop(self):
         """Background loop: read frames at configured FPS."""
+        import numpy as np
         interval = 1.0 / settings.camera_fps
+        fail_count = 0
+        max_fails = 10  # After 10 consecutive failures, mark as not running
         while self._running:
             ret, frame = self._cap.read()
             if not ret:
-                logger.warning("Failed to read frame, retrying...")
+                fail_count += 1
+                if fail_count == max_fails:
+                    logger.error(f"Camera failed {fail_count} consecutive reads — stopping capture")
+                    self._running = False
+                    break
+                elif fail_count % 5 == 0:
+                    logger.warning(f"Camera read failed {fail_count} times...")
                 time.sleep(0.1)
                 continue
+            fail_count = 0  # Reset on success
             with self._lock:
                 self._frame = frame
             time.sleep(interval)
