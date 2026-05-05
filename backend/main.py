@@ -366,8 +366,32 @@ app.include_router(labeling_router)
 app.include_router(yolo_training_router)
 
 
+# Serve built frontend as SPA (static/ directory)
+_static_dir = Path(__file__).parent.parent / "static"
+if _static_dir.is_dir():
+    # Serve assets with proper MIME types and caching
+    app.mount("/assets", StaticFiles(directory=str(_static_dir / "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        """Catch-all: serve frontend files or fall back to index.html for SPA routing."""
+        # Don't intercept API/WS/docs/health/screenshots routes
+        if full_path.startswith(("api/", "video/", "ws/", "docs", "openapi", "health", "screenshots/")):
+            raise HTTPException(status_code=404)
+        file_path = _static_dir / full_path
+        if file_path.is_file():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(file_path))
+        from fastapi.responses import FileResponse
+        return FileResponse(str(_static_dir / "index.html"))
+
+
 @app.get("/")
 async def root():
+    """Root endpoint — serves SPA index.html when static exists, else API info."""
+    if _static_dir.is_dir():
+        from fastapi.responses import FileResponse
+        return FileResponse(str(_static_dir / "index.html"))
     return {
         "name": settings.app_name,
         "version": "0.1.0",
@@ -382,23 +406,3 @@ async def health():
         "camera": camera.is_running if camera else False,
         "inference": inference_engine._running if inference_engine else False,
     }
-
-
-# Serve built frontend as SPA (static/ directory)
-_static_dir = Path(__file__).parent.parent / "static"
-if _static_dir.is_dir():
-    # Serve assets with proper MIME types and caching
-    app.mount("/assets", StaticFiles(directory=str(_static_dir / "assets")), name="assets")
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
-        """Catch-all: serve frontend files or fall back to index.html for SPA routing."""
-        # Don't intercept API routes
-        if full_path.startswith(("api/", "video/", "ws/", "docs", "openapi", "health", "screenshots/")):
-            raise HTTPException(status_code=404)
-        file_path = _static_dir / full_path
-        if file_path.is_file():
-            from fastapi.responses import FileResponse
-            return FileResponse(str(file_path))
-        from fastapi.responses import FileResponse
-        return FileResponse(str(_static_dir / "index.html"))
