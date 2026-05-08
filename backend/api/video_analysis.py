@@ -5,7 +5,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 
 from backend.api.auth import get_current_user
 
@@ -55,7 +55,7 @@ async def analyze_video(
         max_frames: Maximum frames to process
     """
     if _detector is None:
-        return {"error": "Detector not initialized"}
+        raise HTTPException(status_code=503, detail="Detector not initialized")
 
     import cv2
     import numpy as np
@@ -70,7 +70,7 @@ async def analyze_video(
     try:
         cap = cv2.VideoCapture(tmp_path)
         if not cap.isOpened():
-            return {"error": "Failed to open video file"}
+            raise HTTPException(status_code=400, detail="Failed to open video file")
 
         video_fps = cap.get(cv2.CAP_PROP_FPS) or 30
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))

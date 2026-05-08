@@ -1,6 +1,6 @@
 """Alert configuration API endpoints."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.alert.manager import AlertRule
@@ -37,7 +37,7 @@ async def get_rules():
 async def create_rule(req: AlertRuleRequest):
     """Create or update an alert rule."""
     if _alert_manager is None:
-        return {"error": "Alert manager not initialized"}
+        raise HTTPException(status_code=503, detail="Alert manager not initialized")
     rule = AlertRule(
         sop_id=req.sop_id,
         step_id=req.step_id,
@@ -53,7 +53,7 @@ async def create_rule(req: AlertRuleRequest):
 async def delete_rule(sop_id: str, step_id: str):
     """Delete an alert rule."""
     if _alert_manager is None:
-        return {"error": "Alert manager not initialized"}
+        raise HTTPException(status_code=503, detail="Alert manager not initialized")
     _alert_manager.remove_rule(sop_id, step_id)
     return {"status": "deleted"}
 
@@ -62,6 +62,6 @@ async def delete_rule(sop_id: str, step_id: str):
 async def acknowledge_all():
     """Acknowledge all unacknowledged alerts."""
     if _alert_manager is None:
-        return {"error": "Alert manager not initialized"}
+        raise HTTPException(status_code=503, detail="Alert manager not initialized")
     count = _alert_manager.acknowledge_all()
     return {"status": "ok", "acknowledged": count}

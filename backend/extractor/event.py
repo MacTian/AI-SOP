@@ -1,7 +1,7 @@
 """Event data classes for SOP operation detection."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -13,7 +13,7 @@ class SopEvent:
     status: str  # detected, completed, skipped, error, timeout
     confidence: float = 0.0
     details: dict = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def to_dict(self) -> dict:
         return {

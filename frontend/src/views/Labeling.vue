@@ -254,7 +254,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import http from '../api/http'
 
-// ==================== State ====================
 const images = ref([])
 const currentIndex = ref(-1)
 const classes = ref(['board', 'hand', 'tool', 'solder', 'component'])
@@ -265,734 +264,357 @@ const isAutoLabeling = ref(false)
 const classesYaml = ref('')
 const fileInput = ref(null)
 
-const tool = ref('rectangle') // 'rectangle' | 'rotatedRect' | 'circle' | 'polygon' | 'select'
+const tool = ref('rectangle')
 const zoom = ref(1)
 const panOffset = ref({ x: 0, y: 0 })
-
 const canvas = ref(null)
 const canvasWrapper = ref(null)
 
-// Rectangle drawing
 const isDrawingRect = ref(false)
 const rectStart = ref({ x: 0, y: 0 })
 const rectEnd = ref({ x: 0, y: 0 })
 
-// Polygon drawing
+const isDrawingRotRect = ref(false)
+const rotRectStep = ref(0)
+const rotRectCenter = ref({ x: 0, y: 0 })
+const rotRectWidth = ref(0)
+const rotRectAngle = ref(0)
+const rotRectCurrentMouse = ref({ x: 0, y: 0 })
+
+const isDrawingCircle = ref(false)
+const circleCenter = ref({ x: 0, y: 0 })
+const circleRadius = ref(0)
+
 const isDrawingPolygon = ref(false)
 const currentPolygon = ref([])
 
-// Image cache
 const loadedImages = new Map()
-
-// Undo
 const undoStack = ref([])
 
-// Colors
-const classColors = [
-  '#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6',
-  '#EC4899', '#06B6D4', '#F97316', '#84CC16', '#6366F1',
-]
+const classColors = ['#3B82F6','#EF4444','#10B981','#F59E0B','#8B5CF6','#EC4899','#06B6D4','#F97316','#84CC16','#6366F1']
 
-// ==================== Computed ====================
 const currentImage = computed(() => images.value[currentIndex.value] || null)
 const currentLabels = computed(() => currentImage.value?.labels || [])
-const totalLabels = computed(() =>
-  images.value.reduce((sum, img) => sum + (img.labels?.length || 0), 0)
-)
-const rectCount = computed(() =>
-  images.value.reduce((sum, img) => sum + (img.labels?.filter(l => l.type === 'box' || !l.type).length || 0), 0)
-)
-const polyCount = computed(() =>
-  images.value.reduce((sum, img) => sum + (img.labels?.filter(l => l.type === 'polygon').length || 0), 0)
-)
+const totalLabels = computed(() => images.value.reduce((s,i) => s + (i.labels?.length||0), 0))
+const rectCount = computed(() => images.value.reduce((s,i) => s + (i.labels?.filter(l => l.type==='box'||!l.type).length||0), 0))
+const rotRectCount = computed(() => images.value.reduce((s,i) => s + (i.labels?.filter(l => l.type==='rotatedRect').length||0), 0))
+const circleCount = computed(() => images.value.reduce((s,i) => s + (i.labels?.filter(l => l.type==='circle').length||0), 0))
+const polyCount = computed(() => images.value.reduce((s,i) => s + (i.labels?.filter(l => l.type==='polygon').length||0), 0))
 const canUndo = computed(() => undoStack.value.length > 0)
 
-// ==================== Helpers ====================
 function saveUndo() {
-  const snapshot = images.value.map(img => ({
+  undoStack.value.push(images.value.map(img => ({
     ...img,
-    labels: (img.labels || []).map(l => ({ ...l, points: l.points ? [...l.points.map(p => ({ ...p }))] : undefined })),
-  }))
-  undoStack.value.push(snapshot)
+    labels: (img.labels||[]).map(l => ({...l, points: l.points ? [...l.points.map(p=>({...p}))] : undefined}))
+  })))
   if (undoStack.value.length > 50) undoStack.value.shift()
 }
 
 function undoLast() {
   if (!canUndo.value) return
-  const snapshot = undoStack.value.pop()
-  images.value = snapshot
+  images.value = undoStack.value.pop()
   renderCanvas()
 }
 
 function toImageCoords(e) {
-  const rect = canvas.value.getBoundingClientRect()
-  return {
-    x: (e.clientX - rect.left - panOffset.value.x) / zoom.value,
-    y: (e.clientY - rect.top - panOffset.value.y) / zoom.value,
-  }
+  const r = canvas.value.getBoundingClientRect()
+  return { x: (e.clientX - r.left - panOffset.value.x) / zoom.value, y: (e.clientY - r.top - panOffset.value.y) / zoom.value }
 }
 
-function pointInPolygon(pt, polygon) {
-  // Ray casting algorithm
+function pointInPolygon(pt, poly) {
   let inside = false
-  const n = polygon.length
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = polygon[i].x, yi = polygon[i].y
-    const xj = polygon[j].x, yj = polygon[j].y
-    if ((yi > pt.y) !== (yj > pt.y) && pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi) {
-      inside = !inside
-    }
-  }
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++)
+    if ((poly[i].y > pt.y) !== (poly[j].y > pt.y) && pt.x < (poly[j].x-poly[i].x)*(pt.y-poly[i].y)/(poly[j].y-poly[i].y)+poly[i].x) inside = !inside
   return inside
 }
 
-// ==================== File Upload ====================
+function getRotRectCorners(cx,cy,w,h,angle) {
+  const c=Math.cos(angle),s=Math.sin(angle),hw=w/2,hh=h/2
+  return [{x:cx+c*hw-s*hh,y:cy+s*hw+c*hh},{x:cx-c*hw-s*hh,y:cy-s*hw+c*hh},{x:cx-c*hw+s*hh,y:cy-s*hw-c*hh},{x:cx+c*hw+s*hh,y:cy+s*hw-c*hh}]
+}
+
+function pointInRotRect(pt,label,img) {
+  const cx=label.x*img.naturalWidth,cy=label.y*img.naturalHeight,w=label.w*img.naturalWidth,h=label.h*img.naturalHeight
+  const a=label.angle||0,c=Math.cos(-a),s=Math.sin(-a),dx=pt.x-cx,dy=pt.y-cy
+  return Math.abs(dx*c-dy*s)<=w/2&&Math.abs(dx*s+dy*c)<=h/2
+}
+
 function handleFileUpload(e) {
-  const files = Array.from(e.target.files)
-  files.forEach(file => {
+  Array.from(e.target.files).forEach(file => {
     const reader = new FileReader()
     reader.onload = (ev) => {
-      const url = ev.target.result
-      const img = new Image()
+      const url=ev.target.result, img=new Image()
       img.onload = () => {
-        images.value.push({
-          name: file.name,
-          url,
-          labels: [],
-          file,
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-        })
-        if (currentIndex.value < 0) {
-          currentIndex.value = 0
-          loadAndRender(0)
-        }
+        images.value.push({name:file.name,url,labels:[],file,width:img.naturalWidth,height:img.naturalHeight})
+        if(currentIndex.value<0){currentIndex.value=0;loadAndRender(0)}
       }
-      img.src = url
+      img.src=url
     }
     reader.readAsDataURL(file)
   })
-  e.target.value = ''
+  e.target.value=''
 }
 
 function removeImage(i) {
-  images.value.splice(i, 1)
-  if (currentIndex.value >= images.value.length) currentIndex.value = images.value.length - 1
-  if (currentIndex.value >= 0) loadAndRender(currentIndex.value)
-  else renderCanvas()
+  images.value.splice(i,1)
+  currentIndex.value=Math.min(currentIndex.value,images.value.length-1)
+  currentIndex.value>=0?loadAndRender(currentIndex.value):renderCanvas()
 }
 
-function selectImage(i) {
-  currentIndex.value = i
-  loadAndRender(i)
-}
-
-function prevImage() { if (currentIndex.value > 0) selectImage(currentIndex.value - 1) }
-function nextImage() { if (currentIndex.value < images.value.length - 1) selectImage(currentIndex.value + 1) }
+function selectImage(i){currentIndex.value=i;loadAndRender(i)}
+function prevImage(){if(currentIndex.value>0)selectImage(currentIndex.value-1)}
+function nextImage(){if(currentIndex.value<images.value.length-1)selectImage(currentIndex.value+1)}
 
 async function loadAndRender(i) {
-  selectedLabelIndex.value = null
-  const img = images.value[i]
-  if (!img) return
-  if (!loadedImages.has(img.url)) {
-    const imageObj = new Image()
-    imageObj.src = img.url
-    await new Promise(resolve => { imageObj.onload = resolve })
-    loadedImages.set(img.url, imageObj)
-  }
-  await nextTick()
-  renderCanvas()
+  selectedLabelIndex.value=null
+  const img=images.value[i]; if(!img)return
+  if(!loadedImages.has(img.url)){const o=new Image();o.src=img.url;await new Promise(r=>{o.onload=r});loadedImages.set(img.url,o)}
+  await nextTick();renderCanvas()
 }
 
-// ==================== Classes ====================
-function addClass() {
-  const cls = newClass.value.trim()
-  if (cls && !classes.value.includes(cls)) {
-    classes.value.push(cls)
-    selectedClass.value = cls
-    newClass.value = ''
-  }
+function addClass(){const c=newClass.value.trim();if(c&&!classes.value.includes(c)){classes.value.push(c);selectedClass.value=c;newClass.value=''}}
+function removeClass(i){const r=classes.value.splice(i,1)[0];if(selectedClass.value===r)selectedClass.value=classes.value[0]||''}
+function importClasses(){
+  classesYaml.value.split('\n').map(l=>l.trim()).filter(l=>l).forEach(c=>{if(!classes.value.includes(c))classes.value.push(c)})
+  classesYaml.value=''
 }
 
-function removeClass(i) {
-  const removed = classes.value.splice(i, 1)[0]
-  if (selectedClass.value === removed) selectedClass.value = classes.value[0] || ''
-}
-
-function importClasses() {
-  classesYaml.value.split('\n').map(l => l.trim()).filter(l => l).forEach(cls => {
-    if (!classes.value.includes(cls)) classes.value.push(cls)
-  })
-  classesYaml.value = ''
-}
-
-// ==================== Mouse Events ====================
 function onMouseDown(e) {
-  if (!currentImage.value || e.button !== 0) return
-  const coords = toImageCoords(e)
-
-  if (tool.value === 'rectangle') {
+  if(!currentImage.value||e.button!==0)return
+  const coords=toImageCoords(e)
+  if(tool.value==='rectangle'){saveUndo();isDrawingRect.value=true;rectStart.value=coords;rectEnd.value=coords;renderCanvas()}
+  else if(tool.value==='rotatedRect'){
     saveUndo()
-    isDrawingRect.value = true
-    rectStart.value = coords
-    rectEnd.value = coords
+    if(!isDrawingRotRect.value){isDrawingRotRect.value=true;rotRectStep.value=1;rotRectCenter.value=coords;rotRectWidth.value=0;rotRectAngle.value=0;rotRectCurrentMouse.value=coords}
+    else if(rotRectStep.value===1){rotRectStep.value=2;rotRectCurrentMouse.value=coords}
+    else if(rotRectStep.value===2){finishRotatedRect(coords)}
     renderCanvas()
-  } else if (tool.value === 'polygon') {
+  } else if(tool.value==='circle'){saveUndo();isDrawingCircle.value=true;circleCenter.value=coords;circleRadius.value=0;renderCanvas()}
+  else if(tool.value==='polygon'){
     saveUndo()
-    if (!isDrawingPolygon.value) {
-      isDrawingPolygon.value = true
-      currentPolygon.value = [coords]
-    } else {
-      // Check closing: near first vertex
-      if (currentPolygon.value.length >= 3) {
-        const first = currentPolygon.value[0]
-        const dist = Math.hypot(coords.x - first.x, coords.y - first.y)
-        if (dist < 10 / zoom.value) {
-          finishPolygon()
-          return
-        }
-      }
-      currentPolygon.value.push(coords)
-    }
+    if(!isDrawingPolygon.value){isDrawingPolygon.value=true;currentPolygon.value=[coords]}
+    else{if(currentPolygon.value.length>=3){const first=currentPolygon.value[0];if(Math.hypot(coords.x-first.x,coords.y-first.y)<10/zoom.value){finishPolygon();return}}currentPolygon.value.push(coords)}
     renderCanvas()
-  } else if (tool.value === 'select') {
-    const labels = currentLabels.value
-    let hit = false
-    for (let i = labels.length - 1; i >= 0; i--) {
-      const label = labels[i]
-      if (label.type === 'polygon') {
-        const img = loadedImages.get(currentImage.value.url)
-        const pts = label.points.map(p => ({
-          x: p.x * img.naturalWidth,
-          y: p.y * img.naturalHeight,
-        }))
-        if (pointInPolygon(coords, pts)) {
-          selectedLabelIndex.value = i
-          hit = true
-          break
-        }
-      } else {
-        const img = loadedImages.get(currentImage.value.url)
-        const cx = label.x * img.naturalWidth
-        const cy = label.y * img.naturalHeight
-        const hw = (label.w * img.naturalWidth) / 2
-        const hh = (label.h * img.naturalHeight) / 2
-        if (coords.x >= cx - hw && coords.x <= cx + hw && coords.y >= cy - hh && coords.y <= cy + hh) {
-          selectedLabelIndex.value = i
-          hit = true
-          break
-        }
-      }
+  } else if(tool.value==='select'){
+    const labels=currentLabels.value;let hit=false
+    for(let i=labels.length-1;i>=0;i--){
+      const l=labels[i],img=loadedImages.get(currentImage.value.url)
+      if(l.type==='polygon'){if(pointInPolygon(coords,l.points.map(p=>({x:p.x*img.naturalWidth,y:p.y*img.naturalHeight})))){selectedLabelIndex.value=i;hit=true;break}}
+      else if(l.type==='circle'){if(Math.hypot(coords.x-l.x*img.naturalWidth,coords.y-l.y*img.naturalHeight)<=l.r*img.naturalWidth){selectedLabelIndex.value=i;hit=true;break}}
+      else if(l.type==='rotatedRect'){if(pointInRotRect(coords,l,img)){selectedLabelIndex.value=i;hit=true;break}}
+      else{const hw=l.w*img.naturalWidth/2,hh=l.h*img.naturalHeight/2,cx=l.x*img.naturalWidth,cy=l.y*img.naturalHeight;if(coords.x>=cx-hw&&coords.x<=cx+hw&&coords.y>=cy-hh&&coords.y<=cy+hh){selectedLabelIndex.value=i;hit=true;break}}
     }
-    if (!hit) selectedLabelIndex.value = null
+    if(!hit)selectedLabelIndex.value=null
     renderCanvas()
   }
 }
 
 function onMouseMove(e) {
-  if (tool.value === 'rectangle' && isDrawingRect.value) {
-    rectEnd.value = toImageCoords(e)
+  const coords=toImageCoords(e)
+  if(tool.value==='rectangle'&&isDrawingRect.value){rectEnd.value=coords;renderCanvas()}
+  else if(tool.value==='rotatedRect'&&isDrawingRotRect.value){
+    rotRectCurrentMouse.value=coords
+    if(rotRectStep.value===1){const dx=coords.x-rotRectCenter.value.x,dy=coords.y-rotRectCenter.value.y;rotRectWidth.value=Math.hypot(dx,dy)*2;rotRectAngle.value=Math.atan2(dy,dx)}
     renderCanvas()
-  } else if (tool.value === 'polygon' && isDrawingPolygon.value) {
-    renderCanvas(toImageCoords(e))
-  }
+  } else if(tool.value==='circle'&&isDrawingCircle.value){circleRadius.value=Math.hypot(coords.x-circleCenter.value.x,coords.y-circleCenter.value.y);renderCanvas()}
+  else if(tool.value==='polygon'&&isDrawingPolygon.value){renderCanvas(coords)}
 }
 
 function onMouseUp(e) {
-  if (tool.value === 'rectangle' && isDrawingRect.value) {
-    isDrawingRect.value = false
-    rectEnd.value = toImageCoords(e)
-    const img = loadedImages.get(currentImage.value.url)
-    if (!img) { renderCanvas(); return }
-
-    const x1 = Math.min(rectStart.value.x, rectEnd.value.x)
-    const y1 = Math.min(rectStart.value.y, rectEnd.value.y)
-    const x2 = Math.max(rectStart.value.x, rectEnd.value.x)
-    const y2 = Math.max(rectStart.value.y, rectEnd.value.y)
-    if (Math.abs(x2 - x1) < 3 || Math.abs(y2 - y1) < 3) { renderCanvas(); return }
-
-    const label = {
-      type: 'box',
-      cls: selectedClass.value,
-      x: (x1 + x2) / 2 / img.naturalWidth,
-      y: (y1 + y2) / 2 / img.naturalHeight,
-      w: Math.abs(x2 - x1) / img.naturalWidth,
-      h: Math.abs(y2 - y1) / img.naturalHeight,
-      conf: 1.0,
-    }
-    if (!currentImage.value.labels) currentImage.value.labels = []
-    currentImage.value.labels.push(label)
-    selectedLabelIndex.value = currentImage.value.labels.length - 1
-    renderCanvas()
+  if(tool.value==='rectangle'&&isDrawingRect.value){
+    isDrawingRect.value=false;rectEnd.value=toImageCoords(e)
+    const img=loadedImages.get(currentImage.value.url);if(!img){renderCanvas();return}
+    const x1=Math.min(rectStart.value.x,rectEnd.value.x),y1=Math.min(rectStart.value.y,rectEnd.value.y)
+    const x2=Math.max(rectStart.value.x,rectEnd.value.x),y2=Math.max(rectStart.value.y,rectEnd.value.y)
+    if(Math.abs(x2-x1)<3||Math.abs(y2-y1)<3){renderCanvas();return}
+    const label={type:'box',cls:selectedClass.value,x:(x1+x2)/2/img.naturalWidth,y:(y1+y2)/2/img.naturalHeight,w:Math.abs(x2-x1)/img.naturalWidth,h:Math.abs(y2-y1)/img.naturalHeight,conf:1}
+    if(!currentImage.value.labels)currentImage.value.labels=[]
+    currentImage.value.labels.push(label);selectedLabelIndex.value=currentImage.value.labels.length-1;renderCanvas()
+  } else if(tool.value==='circle'&&isDrawingCircle.value){
+    isDrawingCircle.value=false
+    const coords=toImageCoords(e)
+    circleRadius.value=Math.hypot(coords.x-circleCenter.value.x,coords.y-circleCenter.value.y)
+    const img=loadedImages.get(currentImage.value.url);if(!img||circleRadius.value<3){renderCanvas();return}
+    const label={type:'circle',cls:selectedClass.value,x:circleCenter.value.x/img.naturalWidth,y:circleCenter.value.y/img.naturalHeight,r:circleRadius.value/img.naturalWidth,conf:1}
+    if(!currentImage.value.labels)currentImage.value.labels=[]
+    currentImage.value.labels.push(label);selectedLabelIndex.value=currentImage.value.labels.length-1;renderCanvas()
   }
 }
 
-function onDoubleClick(e) {
-  if (tool.value === 'polygon' && isDrawingPolygon.value && currentPolygon.value.length >= 3) {
-    finishPolygon()
-  }
+function onDoubleClick(e){if(tool.value==='polygon'&&isDrawingPolygon.value&&currentPolygon.value.length>=3)finishPolygon()}
+function onRightClick(e){
+  if(tool.value==='polygon'&&isDrawingPolygon.value){currentPolygon.value.length>=3?finishPolygon():(isDrawingPolygon.value=false,currentPolygon.value=[]);renderCanvas()}
+  else if(tool.value==='rotatedRect'&&isDrawingRotRect.value){isDrawingRotRect.value=false;rotRectStep.value=0;renderCanvas()}
 }
+function onWheel(e){zoom.value=Math.max(0.25,Math.min(4,zoom.value+(e.deltaY>0?-0.25:0.25)));renderCanvas()}
 
-function onRightClick(e) {
-  if (tool.value === 'polygon' && isDrawingPolygon.value) {
-    if (currentPolygon.value.length >= 3) {
-      finishPolygon()
-    } else {
-      isDrawingPolygon.value = false
-      currentPolygon.value = []
-      renderCanvas()
-    }
-  }
-}
-
-function onWheel(e) {
-  const delta = e.deltaY > 0 ? -0.25 : 0.25
-  const newZoom = Math.max(0.25, Math.min(4, zoom.value + delta))
-  zoom.value = newZoom
-  renderCanvas()
+function finishRotatedRect(mouseCoords) {
+  const img=loadedImages.get(currentImage.value.url)
+  if(!img){isDrawingRotRect.value=false;rotRectStep.value=0;renderCanvas();return}
+  const perpAngle=rotRectAngle.value+Math.PI/2
+  const height=Math.abs((mouseCoords.x-rotRectCenter.value.x)*Math.cos(perpAngle)+(mouseCoords.y-rotRectCenter.value.y)*Math.sin(perpAngle))*2
+  if(rotRectWidth.value<3||height<3){isDrawingRotRect.value=false;rotRectStep.value=0;renderCanvas();return}
+  const label={type:'rotatedRect',cls:selectedClass.value,x:rotRectCenter.value.x/img.naturalWidth,y:rotRectCenter.value.y/img.naturalHeight,w:rotRectWidth.value/img.naturalWidth,h:height/img.naturalHeight,angle:rotRectAngle.value,conf:1}
+  if(!currentImage.value.labels)currentImage.value.labels=[]
+  currentImage.value.labels.push(label);selectedLabelIndex.value=currentImage.value.labels.length-1
+  isDrawingRotRect.value=false;rotRectStep.value=0;renderCanvas()
 }
 
 function finishPolygon() {
-  const img = loadedImages.get(currentImage.value.url)
-  if (!img || currentPolygon.value.length < 3) {
-    isDrawingPolygon.value = false
-    currentPolygon.value = []
-    renderCanvas()
-    return
-  }
-
-  // Normalize polygon points to 0-1
-  const points = currentPolygon.value.map(p => ({
-    x: p.x / img.naturalWidth,
-    y: p.y / img.naturalHeight,
-  }))
-
-  // Compute bounding box for the polygon
-  const xs = points.map(p => p.x)
-  const ys = points.map(p => p.y)
-  const minX = Math.min(...xs)
-  const maxX = Math.max(...xs)
-  const minY = Math.min(...ys)
-  const maxY = Math.max(...ys)
-
-  const label = {
-    type: 'polygon',
-    cls: selectedClass.value,
-    points,
-    // Also store bbox for compatibility
-    x: (minX + maxX) / 2,
-    y: (minY + maxY) / 2,
-    w: maxX - minX,
-    h: maxY - minY,
-    conf: 1.0,
-  }
-
-  if (!currentImage.value.labels) currentImage.value.labels = []
-  currentImage.value.labels.push(label)
-  selectedLabelIndex.value = currentImage.value.labels.length - 1
-
-  isDrawingPolygon.value = false
-  currentPolygon.value = []
-  renderCanvas()
+  const img=loadedImages.get(currentImage.value.url)
+  if(!img||currentPolygon.value.length<3){isDrawingPolygon.value=false;currentPolygon.value=[];renderCanvas();return}
+  const points=currentPolygon.value.map(p=>({x:p.x/img.naturalWidth,y:p.y/img.naturalHeight}))
+  const xs=points.map(p=>p.x),ys=points.map(p=>p.y)
+  const label={type:'polygon',cls:selectedClass.value,points,x:(Math.min(...xs)+Math.max(...xs))/2,y:(Math.min(...ys)+Math.max(...ys))/2,w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys),conf:1}
+  if(!currentImage.value.labels)currentImage.value.labels=[]
+  currentImage.value.labels.push(label);selectedLabelIndex.value=currentImage.value.labels.length-1
+  isDrawingPolygon.value=false;currentPolygon.value=[];renderCanvas()
 }
 
-// Helper: get the 4 corners of a rotated rectangle
-function getRotRectCorners(cx, cy, w, h, angle) {
-	  const cos = Math.cos(angle)
-	  const sin = Math.sin(angle)
-	  const hw = w / 2
-	  const hh = h / 2
-	  return [
-	    { x: cx + cos * hw - sin * hh, y: cy + sin * hw + cos * hh },
-	    { x: cx - cos * hw - sin * hh, y: cy - sin * hw + cos * hh },
-	    { x: cx - cos * hw + sin * hh, y: cy - sin * hw - cos * hh },
-	    { x: cx + cos * hw + sin * hh, y: cy + sin * hw - cos * hh },
-	  ]
-}
+function deleteSelectedLabel(){if(selectedLabelIndex.value===null||!currentImage.value)return;saveUndo();currentImage.value.labels.splice(selectedLabelIndex.value,1);selectedLabelIndex.value=null;renderCanvas()}
 
-// Helper: check point in rotated rectangle
-function pointInRotRect(pt, label, img) {
-	  const cx = label.x * img.naturalWidth
-	  const cy = label.y * img.naturalHeight
-	  const w = label.w * img.naturalWidth
-	  const h = label.h * img.naturalHeight
-	  const angle = label.angle || 0
-	  // Transform point into rect local space
-	  const cos = Math.cos(-angle)
-	  const sin = Math.sin(-angle)
-	  const dx = pt.x - cx
-	  const dy = pt.y - cy
-	  const lx = dx * cos - dy * sin
-	  const ly = dx * sin + dy * cos
-	  return Math.abs(lx) <= w / 2 && Math.abs(ly) <= h / 2
-}
-
-function finishRotatedRect(mouseCoords) {
-	  const img = loadedImages.get(currentImage.value.url)
-	  if (!img) {
-	    isDrawingRotRect.value = false
-	    rotRectStep.value = 0
-	    renderCanvas()
-	    return
-	  }
-
-	  // Calculate height from mouse position
-	  const cx = rotRectCenter.value.x
-	  const cy = rotRectCenter.value.y
-	  const angle = rotRectAngle.value
-
-	  // Project mouse-center vector onto the direction perpendicular to width
-	  const perpAngle = angle + Math.PI / 2
-	  const dx = mouseCoords.x - cx
-	  const dy = mouseCoords.y - cy
-	  const height = Math.abs(dx * Math.cos(perpAngle) + dy * Math.sin(perpAngle)) * 2
-
-	  if (rotRectWidth.value < 3 || height < 3) {
-	    isDrawingRotRect.value = false
-	    rotRectStep.value = 0
-	    renderCanvas()
-	    return
-	  }
-
-	  const label = {
-	    type: 'rotatedRect',
-	    cls: selectedClass.value,
-	    x: cx / img.naturalWidth,
-	    y: cy / img.naturalHeight,
-	    w: rotRectWidth.value / img.naturalWidth,
-	    h: height / img.naturalHeight,
-	    angle: angle,
-	    conf: 1.0,
-	  }
-	  if (!currentImage.value.labels) currentImage.value.labels = []
-	  currentImage.value.labels.push(label)
-	  selectedLabelIndex.value = currentImage.value.labels.length - 1
-
-	  isDrawingRotRect.value = false
-	  rotRectStep.value = 0
-	  renderCanvas()
-	}
-
-function deleteSelectedLabel() {
-  if (selectedLabelIndex.value === null || !currentImage.value) return
-  saveUndo()
-  currentImage.value.labels.splice(selectedLabelIndex.value, 1)
-  selectedLabelIndex.value = null
-  renderCanvas()
-}
-
-// ==================== Canvas Rendering ====================
-function renderCanvas(mousePos = null) {
-  const cvs = canvas.value
-  if (!cvs) return
-  const ctx = cvs.getContext('2d')
-  const wrapper = canvasWrapper.value
-  if (!wrapper) return
-
-  // Resize canvas to match display
-  const dpr = window.devicePixelRatio || 1
-  const rect = wrapper.getBoundingClientRect()
-  cvs.width = rect.width * dpr
-  cvs.height = rect.height * dpr
-  ctx.scale(dpr, dpr)
-
-  const w = rect.width
-  const h = rect.height
-  ctx.clearRect(0, 0, w, h)
-
-  // Draw checkerboard background
-  const tileSize = 16
-  for (let y = 0; y < h; y += tileSize) {
-    for (let x = 0; x < w; x += tileSize) {
-      ctx.fillStyle = ((x + y) / tileSize) % 2 === 0 ? '#1a1a2e' : '#16213e'
-      ctx.fillRect(x, y, tileSize, tileSize)
-    }
-  }
-
-  const img = loadedImages.get(currentImage.value?.url)
-  if (!img) return
-
-  // Calculate image display area with zoom and pan
-  const imgW = img.naturalWidth * zoom.value
-  const imgH = img.naturalHeight * zoom.value
-  const drawX = panOffset.value.x
-  const drawY = panOffset.value.y
-
-  ctx.save()
-  // Clip to image area
-  ctx.beginPath()
-  ctx.rect(drawX, drawY, imgW, imgH)
-  ctx.clip()
-  ctx.drawImage(img, drawX, drawY, imgW, imgH)
-
-  // Draw labels
-  const labels = currentImage.value?.labels || []
-  labels.forEach((label, i) => {
-    const color = classColors[classes.value.indexOf(label.cls) % classColors.length]
-    const isSelected = i === selectedLabelIndex.value
-
-    if (label.type === 'polygon' && label.points) {
-      // Draw polygon
-      ctx.beginPath()
-      label.points.forEach((p, j) => {
-        const px = drawX + p.x * imgW
-        const py = drawY + p.y * imgH
-        if (j === 0) ctx.moveTo(px, py)
-        else ctx.lineTo(px, py)
-      })
-      ctx.closePath()
-      ctx.fillStyle = color + (isSelected ? '60' : '30')
-      ctx.fill()
-      ctx.strokeStyle = color
-      ctx.lineWidth = isSelected ? 3 : 2
-      ctx.stroke()
-
-      // Draw vertices
-      label.points.forEach((p) => {
-        const px = drawX + p.x * imgW
-        const py = drawY + p.y * imgH
-        ctx.beginPath()
-        ctx.arc(px, py, isSelected ? 4 : 3, 0, Math.PI * 2)
-        ctx.fillStyle = color
-        ctx.fill()
-      })
+function renderCanvas(mousePos=null) {
+  const cvs=canvas.value;if(!cvs)return
+  const ctx=cvs.getContext('2d'),wrapper=canvasWrapper.value;if(!wrapper)return
+  const dpr=window.devicePixelRatio||1,rect=wrapper.getBoundingClientRect()
+  cvs.width=rect.width*dpr;cvs.height=rect.height*dpr;ctx.scale(dpr,dpr)
+  const w=rect.width,h=rect.height;ctx.clearRect(0,0,w,h)
+  for(let y=0;y<h;y+=16)for(let x=0;x<w;x+=16){ctx.fillStyle=((x+y)/16)%2===0?'#1a1a2e':'#16213e';ctx.fillRect(x,y,16,16)}
+  const img=loadedImages.get(currentImage.value?.url);if(!img)return
+  const imgW=img.naturalWidth*zoom.value,imgH=img.naturalHeight*zoom.value,dx=panOffset.value.x,dy=panOffset.value.y
+  ctx.save();ctx.beginPath();ctx.rect(dx,dy,imgW,imgH);ctx.clip();ctx.drawImage(img,dx,dy,imgW,imgH)
+  ;(currentImage.value?.labels||[]).forEach((label,i)=>{
+    const color=classColors[classes.value.indexOf(label.cls)%classColors.length],sel=i===selectedLabelIndex.value
+    if(label.type==='polygon'&&label.points){
+      ctx.beginPath();label.points.forEach((p,j)=>{const px=dx+p.x*imgW,py=dy+p.y*imgH;j===0?ctx.moveTo(px,py):ctx.lineTo(px,py)});ctx.closePath()
+      ctx.fillStyle=color+(sel?'60':'30');ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=sel?3:2;ctx.stroke()
+      label.points.forEach(p=>{ctx.beginPath();ctx.arc(dx+p.x*imgW,dy+p.y*imgH,sel?4:3,0,Math.PI*2);ctx.fillStyle=color;ctx.fill()})
+    } else if(label.type==='circle'){
+      const cx=dx+label.x*imgW,cy=dy+label.y*imgH,r=label.r*imgW
+      ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle=color+(sel?'40':'15');ctx.fill();ctx.strokeStyle=color;ctx.lineWidth=sel?3:2;ctx.stroke()
+      ctx.beginPath();ctx.arc(cx,cy,3,0,Math.PI*2);ctx.fillStyle=color;ctx.fill()
+    } else if(label.type==='rotatedRect'){
+      const cx=dx+label.x*imgW,cy=dy+label.y*imgH,w=label.w*imgW,h=label.h*imgH,a=label.angle||0
+      ctx.save();ctx.translate(cx,cy);ctx.rotate(a)
+      ctx.fillStyle=color+(sel?'40':'15');ctx.fillRect(-w/2,-h/2,w,h);ctx.strokeStyle=color;ctx.lineWidth=sel?3:2;ctx.strokeRect(-w/2,-h/2,w,h)
+      ctx.restore()
+      ctx.strokeStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cx-6,cy);ctx.lineTo(cx+6,cy);ctx.moveTo(cx,cy-6);ctx.lineTo(cx,cy+6);ctx.stroke()
     } else {
-      // Draw box
-      const bx = drawX + label.x * imgW
-      const by = drawY + label.y * imgH
-      const bw = label.w * imgW
-      const bh = label.h * imgH
-
-      ctx.fillStyle = color + (isSelected ? '40' : '15')
-      ctx.fillRect(bx - bw / 2, by - bh / 2, bw, bh)
-      ctx.strokeStyle = color
-      ctx.lineWidth = isSelected ? 3 : 2
-      ctx.strokeRect(bx - bw / 2, by - bh / 2, bw, bh)
-
-      // Label text background
-      ctx.fillStyle = color
-      const text = label.cls
-      ctx.font = '11px sans-serif'
-      const tw = ctx.measureText(text).width
-      ctx.fillRect(bx - bw / 2, by - bh / 2 - 16, tw + 6, 16)
-      ctx.fillStyle = '#fff'
-      ctx.fillText(text, bx - bw / 2 + 3, by - bh / 2 - 4)
+      const bx=dx+label.x*imgW,by=dy+label.y*imgH,bw=label.w*imgW,bh=label.h*imgH
+      ctx.fillStyle=color+(sel?'40':'15');ctx.fillRect(bx-bw/2,by-bh/2,bw,bh);ctx.strokeStyle=color;ctx.lineWidth=sel?3:2;ctx.strokeRect(bx-bw/2,by-bh/2,bw,bh)
+      ctx.fillStyle=color;ctx.font='11px sans-serif';const tw=ctx.measureText(label.cls).width
+      ctx.fillRect(bx-bw/2,by-bh/2-16,tw+6,16);ctx.fillStyle='#fff';ctx.fillText(label.cls,bx-bw/2+3,by-bh/2-4)
     }
   })
-
-  // Draw current rectangle
-  if (isDrawingRect.value) {
-    const x = Math.min(rectStart.value.x, rectEnd.value.x) * zoom.value + drawX
-    const y = Math.min(rectStart.value.y, rectEnd.value.y) * zoom.value + drawY
-    const rw = Math.abs(rectEnd.value.x - rectStart.value.x) * zoom.value
-    const rh = Math.abs(rectEnd.value.y - rectStart.value.y) * zoom.value
-    ctx.strokeStyle = classColors[classes.value.indexOf(selectedClass.value) % classColors.length]
-    ctx.lineWidth = 2
-    ctx.setLineDash([6, 4])
-    ctx.strokeRect(x, y, rw, rh)
-    ctx.setLineDash([])
+  if(isDrawingRect.value){
+    const x=Math.min(rectStart.value.x,rectEnd.value.x)*zoom.value+dx,y=Math.min(rectStart.value.y,rectEnd.value.y)*zoom.value+dy
+    const rw=Math.abs(rectEnd.value.x-rectStart.value.x)*zoom.value,rh=Math.abs(rectEnd.value.y-rectStart.value.y)*zoom.value
+    ctx.strokeStyle=classColors[classes.value.indexOf(selectedClass.value)%classColors.length];ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.strokeRect(x,y,rw,rh);ctx.setLineDash([])
   }
-
-  // Draw current polygon
-  if (isDrawingPolygon.value && currentPolygon.value.length > 0) {
-    const color = classColors[classes.value.indexOf(selectedClass.value) % classColors.length]
-
-    // Draw edges
-    ctx.beginPath()
-    currentPolygon.value.forEach((p, j) => {
-      const px = p.x * zoom.value + drawX
-      const py = p.y * zoom.value + drawY
-      if (j === 0) ctx.moveTo(px, py)
-      else ctx.lineTo(px, py)
-    })
-
-    // Line to mouse position for preview
-    if (mousePos) {
-      ctx.lineTo(mousePos.x * zoom.value + drawX, mousePos.y * zoom.value + drawY)
-    }
-    ctx.strokeStyle = color
-    ctx.lineWidth = 2
-    ctx.setLineDash([6, 4])
-    ctx.stroke()
-    ctx.setLineDash([])
-
-    // Draw vertices
-    currentPolygon.value.forEach((p, j) => {
-      const px = p.x * zoom.value + drawX
-      const py = p.y * zoom.value + drawY
-      ctx.beginPath()
-      ctx.arc(px, py, j === 0 ? 5 : 4, 0, Math.PI * 2)
-      ctx.fillStyle = j === 0 ? '#fff' : color
-      ctx.fill()
-      if (j === 0) {
-        ctx.strokeStyle = color
-        ctx.lineWidth = 2
-        ctx.stroke()
-      }
-    })
-
-    // First vertex hint
-    if (currentPolygon.value.length >= 3) {
-      const first = currentPolygon.value[0]
-      const fx = first.x * zoom.value + drawX
-      const fy = first.y * zoom.value + drawY
-      ctx.beginPath()
-      ctx.arc(fx, fy, 8, 0, Math.PI * 2)
-      ctx.strokeStyle = '#fff'
-      ctx.lineWidth = 1
-      ctx.setLineDash([2, 2])
-      ctx.stroke()
-      ctx.setLineDash([])
+  if(isDrawingRotRect.value&&rotRectStep.value>=1){
+    const color=classColors[classes.value.indexOf(selectedClass.value)%classColors.length]
+    const cx=rotRectCenter.value.x*zoom.value+dx,cy=rotRectCenter.value.y*zoom.value+dy,w=rotRectWidth.value*zoom.value
+    if(rotRectStep.value===1){
+      ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([6,4])
+      const ddx=Math.cos(rotRectAngle.value)*w/2,ddy=Math.sin(rotRectAngle.value)*w/2
+      ctx.beginPath();ctx.moveTo(cx-ddx,cy-ddy);ctx.lineTo(cx+ddx,cy+ddy);ctx.stroke()
+      ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.setLineDash([])
+    } else if(rotRectStep.value===2){
+      const h=Math.abs((rotRectCurrentMouse.value.x-rotRectCenter.value.x)*Math.cos(rotRectAngle.value+Math.PI/2)+(rotRectCurrentMouse.value.y-rotRectCenter.value.y)*Math.sin(rotRectAngle.value+Math.PI/2))*2*zoom.value
+      ctx.save();ctx.translate(cx,cy);ctx.rotate(rotRectAngle.value)
+      ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.strokeRect(-w/2,-h/2,w,h);ctx.setLineDash([]);ctx.restore()
+      ctx.strokeStyle=color;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(cx-6,cy);ctx.lineTo(cx+6,cy);ctx.moveTo(cx,cy-6);ctx.lineTo(cx,cy+6);ctx.stroke()
     }
   }
-
+  if(isDrawingCircle.value&&circleRadius.value>1){
+    const color=classColors[classes.value.indexOf(selectedClass.value)%classColors.length]
+    const cx=circleCenter.value.x*zoom.value+dx,cy=circleCenter.value.y*zoom.value+dy,r=circleRadius.value*zoom.value
+    ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([])
+    ctx.beginPath();ctx.arc(cx,cy,3,0,Math.PI*2);ctx.fillStyle=color;ctx.fill()
+  }
+  if(isDrawingPolygon.value&&currentPolygon.value.length>0){
+    const color=classColors[classes.value.indexOf(selectedClass.value)%classColors.length]
+    ctx.beginPath();currentPolygon.value.forEach((p,j)=>{const px=p.x*zoom.value+dx,py=p.y*zoom.value+dy;j===0?ctx.moveTo(px,py):ctx.lineTo(px,py)})
+    if(mousePos)ctx.lineTo(mousePos.x*zoom.value+dx,mousePos.y*zoom.value+dy)
+    ctx.strokeStyle=color;ctx.lineWidth=2;ctx.setLineDash([6,4]);ctx.stroke();ctx.setLineDash([])
+    currentPolygon.value.forEach((p,j)=>{const px=p.x*zoom.value+dx,py=p.y*zoom.value+dy;ctx.beginPath();ctx.arc(px,py,j===0?5:4,0,Math.PI*2);ctx.fillStyle=j===0?'#fff':color;ctx.fill();if(j===0){ctx.strokeStyle=color;ctx.lineWidth=2;ctx.stroke()}})
+    if(currentPolygon.value.length>=3){const f=currentPolygon.value[0];ctx.beginPath();ctx.arc(f.x*zoom.value+dx,f.y*zoom.value+dy,8,0,Math.PI*2);ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.setLineDash([2,2]);ctx.stroke();ctx.setLineDash([])}
+  }
   ctx.restore()
 }
 
-// ==================== Watch ====================
-watch(currentIndex, async () => {
-  selectedLabelIndex.value = null
-  if (!currentImage.value) { renderCanvas(); return }
-  if (!loadedImages.has(currentImage.value.url)) {
-    const img = new Image()
-    img.src = currentImage.value.url
-    await new Promise(resolve => { img.onload = resolve })
-    loadedImages.set(currentImage.value.url, img)
-  }
-  await nextTick()
-  renderCanvas()
+watch(currentIndex,async()=>{
+  selectedLabelIndex.value=null
+  if(!currentImage.value){renderCanvas();return}
+  if(!loadedImages.has(currentImage.value.url)){const o=new Image();o.src=currentImage.value.url;await new Promise(r=>{o.onload=r});loadedImages.set(currentImage.value.url,o)}
+  await nextTick();renderCanvas()
 })
 
-// ==================== Auto Label ====================
-async function runAutoLabel() {
-  isAutoLabeling.value = true
-  try {
-    for (const img of images.value) {
-      if (!img.file) continue
-      const formData = new FormData()
-      formData.append('file', img.file)
-      const { data } = await http.post('/api/label/auto', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
-      if (!img.labels) img.labels = []
-      data.detections.forEach(d => {
-        img.labels.push({
-          type: 'box',
-          cls: d.cls,
-          x: d.x,
-          y: d.y,
-          w: d.w,
-          h: d.h,
-          conf: d.conf,
-        })
-      })
+async function runAutoLabel(){
+  isAutoLabeling.value=true
+  try{
+    for(const img of images.value){
+      if(!img.file)continue
+      const fd=new FormData();fd.append('file',img.file)
+      const {data}=await http.post('/api/label/auto',fd,{headers:{'Content-Type':'multipart/form-data'}})
+      if(!img.labels)img.labels=[]
+      data.detections.forEach(d=>{img.labels.push({type:'box',cls:d.cls,x:d.x,y:d.y,w:d.w,h:d.h,conf:d.conf})})
     }
-    if (currentImage.value) renderCanvas()
-  } catch (e) {
-    console.error('Auto label failed:', e)
-    alert('Auto label failed: ' + (e.response?.data?.error || e.message))
-  }
-  isAutoLabeling.value = false
+    if(currentImage.value)renderCanvas()
+  }catch(e){console.error('Auto label failed:',e);alert('Auto label failed: '+(e.response?.data?.error||e.message))}
+  isAutoLabeling.value=false
 }
 
-// ==================== Export ====================
-function exportLabels() {
-  const classList = classes.value.join('\n')
-  downloadFile('classes.txt', classList)
+function downloadFile(filename,content){const blob=new Blob([content],{type:'text/plain'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;a.click();URL.revokeObjectURL(url)}
 
-  images.value.forEach(img => {
-    if (!img.labels || img.labels.length === 0) return
-    const lines = img.labels.map(l => {
-      const classIdx = classes.value.indexOf(l.cls)
-      if (l.type === 'polygon' && l.points) {
-        // YOLO segmentation format: class_idx x1 y1 x2 y2 ...
-        return classIdx + ' ' + l.points.map(p => p.x.toFixed(6) + ' ' + p.y.toFixed(6)).join(' ')
-      }
-      // YOLO bbox format: class_idx cx cy w h
-      return `${classIdx} ${l.x.toFixed(6)} ${l.y.toFixed(6)} ${l.w.toFixed(6)} ${l.h.toFixed(6)}`
+function exportLabels(){
+  downloadFile('classes.txt',classes.value.join('\n'))
+  images.value.forEach(img=>{
+    if(!img.labels?.length)return
+    const lines=img.labels.map(l=>{
+      const ci=classes.value.indexOf(l.cls)
+      if(l.type==='polygon'&&l.points)return ci+' '+l.points.map(p=>p.x.toFixed(6)+' '+p.y.toFixed(6)).join(' ')
+      if(l.type==='circle')return ci+' '+l.x.toFixed(6)+' '+l.y.toFixed(6)+' '+(l.r*2).toFixed(6)+' '+(l.r*2).toFixed(6)
+      if(l.type==='rotatedRect')return ci+' '+getRotRectCorners(l.x,l.y,l.w,l.h,l.angle||0).map(c=>c.x.toFixed(6)+' '+c.y.toFixed(6)).join(' ')
+      return ci+' '+l.x.toFixed(6)+' '+l.y.toFixed(6)+' '+l.w.toFixed(6)+' '+l.h.toFixed(6)
     })
-    downloadFile(img.name.replace(/\.[^.]+$/, '.txt'), lines.join('\n'))
+    downloadFile(img.name.replace(/\.[^.]+$/,'.txt'),lines.join('\n'))
   })
-  alert(`Exported ${images.value.filter(i => i.labels?.length).length} image labels`)
+  alert('Exported '+images.value.filter(i=>i.labels?.length).length+' image labels')
 }
 
-function exportCOCO() {
-  const coco = {
-    images: [],
-    annotations: [],
-    categories: classes.value.map((name, i) => ({ id: i, name })),
-  }
-  let annId = 1
-
-  images.value.forEach((img, imgIdx) => {
-    if (!img.labels || img.labels.length === 0) return
-    coco.images.push({
-      id: imgIdx,
-      file_name: img.name,
-      width: img.width || 0,
-      height: img.height || 0,
-    })
-    img.labels.forEach(l => {
-      const classIdx = classes.value.indexOf(l.cls)
-      if (l.type === 'polygon' && l.points) {
-        const flat = l.points.flatMap(p => [
-          p.x * (img.width || 1),
-          p.y * (img.height || 1),
-        ])
-        // Compute bbox from polygon
-        const xs = l.points.map(p => p.x * (img.width || 1))
-        const ys = l.points.map(p => p.y * (img.height || 1))
-        const x = Math.min(...xs)
-        const y = Math.min(...ys)
-        const w = Math.max(...xs) - x
-        const h = Math.max(...ys) - y
-        coco.annotations.push({
-          id: annId++, image_id: imgIdx, category_id: classIdx,
-          segmentation: [flat], bbox: [x, y, w, h],
-          area: w * h, iscrowd: 0,
-        })
+function exportCOCO(){
+  const coco={images:[],annotations:[],categories:classes.value.map((n,i)=>({id:i,name:n}))}
+  let annId=1
+  images.value.forEach((img,ii)=>{
+    if(!img.labels?.length)return
+    coco.images.push({id:ii,file_name:img.name,width:img.width||0,height:img.height||0})
+    img.labels.forEach(l=>{
+      const ci=classes.value.indexOf(l.cls)
+      if(l.type==='polygon'&&l.points){
+        const flat=l.points.flatMap(p=>[p.x*(img.width||1),p.y*(img.height||1)])
+        const xs=l.points.map(p=>p.x*(img.width||1)),ys=l.points.map(p=>p.y*(img.height||1))
+        coco.annotations.push({id:annId++,image_id:ii,category_id:ci,segmentation:[flat],bbox:[Math.min(...xs),Math.min(...ys),Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys)],area:(Math.max(...xs)-Math.min(...xs))*(Math.max(...ys)-Math.min(...ys)),iscrowd:0})
+      } else if(l.type==='circle'){
+        const cx=l.x*(img.width||1),cy=l.y*(img.height||1),r=l.r*(img.width||1),poly=[]
+        for(let i=0;i<16;i++){const a=i/16*Math.PI*2;poly.push(cx+r*Math.cos(a),cy+r*Math.sin(a))}
+        coco.annotations.push({id:annId++,image_id:ii,category_id:ci,segmentation:[poly],bbox:[cx-r,cy-r,r*2,r*2],area:Math.PI*r*r,iscrowd:0})
+      } else if(l.type==='rotatedRect'){
+        const corners=getRotRectCorners(l.x*(img.width||1),l.y*(img.height||1),l.w*(img.width||1),l.h*(img.height||1),l.angle||0)
+        const flat=corners.flatMap(c=>[c.x,c.y]),xs=corners.map(c=>c.x),ys=corners.map(c=>c.y)
+        coco.annotations.push({id:annId++,image_id:ii,category_id:ci,segmentation:[flat],bbox:[Math.min(...xs),Math.min(...ys),Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys)],area:(Math.max(...xs)-Math.min(...xs))*(Math.max(...ys)-Math.min(...ys)),iscrowd:0})
       } else {
-        const x = (l.x - l.w / 2) * (img.width || 1)
-        const y = (l.y - l.h / 2) * (img.height || 1)
-        const w = l.w * (img.width || 1)
-        const h = l.h * (img.height || 1)
-        coco.annotations.push({
-          id: annId++, image_id: imgIdx, category_id: classIdx,
-          bbox: [x, y, w, h], area: w * h, iscrowd: 0,
-        })
+        const x=(l.x-l.w/2)*(img.width||1),y=(l.y-l.h/2)*(img.height||1),w=l.w*(img.width||1),h=l.h*(img.height||1)
+        coco.annotations.push({id:annId++,image_id:ii,category_id:ci,bbox:[x,y,w,h],area:w*h,iscrowd:0})
       }
     })
   })
-
-  downloadFile('annotations.json', JSON.stringify(coco, null, 2))
-  alert(`Exported COCO JSON with ${coco.annotations.length} annotations`)
+  downloadFile('annotations.json',JSON.stringify(coco,null,2))
+  alert('Exported COCO JSON with '+coco.annotations.length+' annotations')
 }
 
-function downloadFile(filename, content) {
-  const blob = new Blob([content], { type: 'text/plain' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
-}
+function clearAll(){if(!confirm('Clear all images and labels?'))return;images.value=[];currentIndex.value=-1;loadedImages.clear();undoStack.value=[];renderCanvas()}
 
-function clearAll() {
-  if (!confirm('Clear all images and labels?')) return
-  images.value = []
-  currentIndex.value = -1
-  loadedImages.clear()
-  undoStack.value = []
-  renderCanvas()
-}
-
-// ==================== Lifecycle ====================
-onMounted(() => {
-  window.addEventListener('resize', () => renderCanvas())
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', () => renderCanvas())
-})
+onMounted(()=>{window.addEventListener('resize',()=>renderCanvas())})
+onUnmounted(()=>{window.removeEventListener('resize',()=>renderCanvas())})
 </script>

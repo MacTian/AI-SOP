@@ -3,7 +3,7 @@
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 from backend.config import settings
 from backend.extractor.event import SopEvent
@@ -34,7 +34,7 @@ class Alert:
     step_name: str
     message: str
     details: dict = field(default_factory=dict)
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     acknowledged: bool = False
     repeat_count: int = 1
 

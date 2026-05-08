@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import shutil
 import threading
 import time
@@ -70,13 +71,21 @@ def _stop_requested():
     return _train_state["_stop_flag"]
 
 
+_DATASET_NAME_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
+
+
 @router.post("/dataset/upload")
 async def upload_dataset(
     file: UploadFile = File(...),
     dataset_name: str = Form("sop_dataset"),
 ):
     """Upload a YOLO-format dataset as ZIP file."""
-    dataset_dir = DATASETS_DIR / dataset_name
+    if not _DATASET_NAME_RE.match(dataset_name):
+        raise HTTPException(status_code=400, detail="Invalid dataset name")
+
+    dataset_dir = (DATASETS_DIR / dataset_name).resolve()
+    if not dataset_dir.is_relative_to(DATASETS_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid dataset name")
     if dataset_dir.exists():
         shutil.rmtree(dataset_dir)
 
@@ -88,6 +97,11 @@ async def upload_dataset(
 
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
+            # Validate all member paths stay within dataset_dir (ZIP slip guard)
+            for member in zf.namelist():
+                member_path = (dataset_dir / member).resolve()
+                if not member_path.is_relative_to(dataset_dir.resolve()):
+                    raise HTTPException(status_code=400, detail=f"ZIP contains unsafe path: {member}")
             zf.extractall(dataset_dir)
         zip_path.unlink()  # Remove zip after extraction
     except zipfile.BadZipFile:

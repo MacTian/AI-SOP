@@ -73,7 +73,7 @@ def _seed_admin():
             )
             db.add(admin)
             db.commit()
-            logger.info("Seeded default admin user (admin / admin123)")
+            logger.info("Seeded default admin user (admin)")
     except Exception as e:
         db.rollback()
         logger.debug(f"Admin seed skipped: {e}")

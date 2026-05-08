@@ -1,6 +1,6 @@
 """Operation record ORM model."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, JSON
 
@@ -19,4 +19,4 @@ class OperationRecord(Base):
     confidence = Column(Float, default=0.0)
     details = Column(JSON, default=dict)
     screenshot_path = Column(String, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))

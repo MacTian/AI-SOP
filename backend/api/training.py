@@ -1,6 +1,6 @@
 """Training API: start/stop training, get results, save SOP."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from backend.api.auth import get_current_user
@@ -63,11 +63,11 @@ _analyzed_steps: list[dict] = []
 async def start_training(req: TrainingStartRequest):
     """Start a new training session (begin recording)."""
     if _session is None:
-        return {"error": "Training not initialized"}
+        raise HTTPException(status_code=503, detail="Training not initialized")
 
     ok = _session.start(sop_name=req.sop_name, sop_description=req.sop_description)
     if not ok:
-        return {"error": "Training already in progress"}
+        raise HTTPException(status_code=409, detail="Training already in progress")
 
     return {"status": "recording", "message": "Training started"}
 
@@ -78,17 +78,17 @@ async def stop_training():
     global _analyzed_steps
 
     if _session is None:
-        return {"error": "Training not initialized"}
+        raise HTTPException(status_code=503, detail="Training not initialized")
 
     ok = _session.stop()
     if not ok:
-        return {"error": "No training in progress"}
+        raise HTTPException(status_code=409, detail="No training in progress")
 
     # Analyze frames
     frames = _session.get_frames()
     if not frames:
         _session.reset()
-        return {"error": "No frames recorded"}
+        raise HTTPException(status_code=400, detail="No frames recorded")
 
     _analyzed_steps = _analyzer.analyze(frames)
 
@@ -115,7 +115,7 @@ async def get_status():
 async def get_result():
     """Get analysis result (identified steps)."""
     if not _analyzed_steps:
-        return {"error": "No analysis result available. Run training first."}
+        raise HTTPException(status_code=404, detail="No analysis result available. Run training first.")
 
     # Return steps without internal fields
     clean_steps = []
@@ -150,7 +150,7 @@ async def update_step(step_id: str, req: StepUpdateRequest):
                 step["order"] = req.order
             return {"status": "updated", "step": {k: v for k, v in step.items() if not k.startswith("_")}}
 
-    return {"error": f"Step '{step_id}' not found"}
+    raise HTTPException(status_code=404, detail=f"Step '{step_id}' not found")
 
 
 @router.delete("/step/{step_id}")
@@ -160,7 +160,7 @@ async def delete_step(step_id: str):
     before = len(_analyzed_steps)
     _analyzed_steps = [s for s in _analyzed_steps if s["step_id"] != step_id]
     if len(_analyzed_steps) == before:
-        return {"error": f"Step '{step_id}' not found"}
+        raise HTTPException(status_code=404, detail=f"Step '{step_id}' not found")
 
     # Re-number
     for i, step in enumerate(_analyzed_steps):
@@ -201,10 +201,10 @@ async def save_as_sop(req: SaveSopRequest):
     global _analyzed_steps
 
     if not _analyzed_steps:
-        return {"error": "No steps to save"}
+        raise HTTPException(status_code=400, detail="No steps to save")
 
     if _sop_manager is None:
-        return {"error": "SOP manager not initialized"}
+        raise HTTPException(status_code=503, detail="SOP manager not initialized")
 
     from backend.sop.schema import SopDefinition, SopStep, StepRule
 
@@ -262,10 +262,10 @@ class LstmTrainRequest(BaseModel):
 async def train_lstm(req: LstmTrainRequest):
     """Train LSTM step classifier on synthetic data."""
     if _lstm_trainer is None:
-        return {"error": "LSTM trainer not initialized"}
+        raise HTTPException(status_code=503, detail="LSTM trainer not initialized")
 
     if _lstm_trainer.is_training:
-        return {"error": "Training already in progress"}
+        raise HTTPException(status_code=409, detail="Training already in progress")
 
     # Update trainer params
     _lstm_trainer.num_classes = req.num_classes

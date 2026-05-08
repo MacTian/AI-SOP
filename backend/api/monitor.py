@@ -4,7 +4,7 @@ import csv
 import io
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -68,10 +68,10 @@ async def get_status():
 async def get_sop_state(sop_id: str):
     """Get state of a specific SOP instance."""
     if _state_machine is None:
-        return {"error": "Monitor not initialized"}
+        raise HTTPException(status_code=503, detail="Monitor not initialized")
     instance = _state_machine.get_instance(sop_id)
     if instance is None:
-        return {"error": f"No active instance for SOP '{sop_id}'"}
+        raise HTTPException(status_code=404, detail=f"No active instance for SOP '{sop_id}'")
     return instance.get_state_dict()
 
 
@@ -87,10 +87,10 @@ async def get_alerts(limit: int = 50):
 async def acknowledge_alert(alert_id: str):
     """Acknowledge an alert."""
     if _alert_manager is None:
-        return {"error": "Alert manager not initialized"}
+        raise HTTPException(status_code=503, detail="Alert manager not initialized")
     ok = _alert_manager.acknowledge(alert_id)
     if not ok:
-        return {"error": f"Alert '{alert_id}' not found"}
+        raise HTTPException(status_code=404, detail=f"Alert '{alert_id}' not found")
     return {"status": "acknowledged", "alert_id": alert_id}
 
 

@@ -1,6 +1,7 @@
 """SOP CRUD manager: load, save, list SOP definitions."""
 
 import logging
+import re
 from pathlib import Path
 
 import yaml
@@ -9,6 +10,14 @@ from backend.config import settings
 from backend.sop.schema import SopDefinition, SopStep, StepRule
 
 logger = logging.getLogger(__name__)
+
+_SOP_ID_RE = re.compile(r'^[a-zA-Z0-9_-]+$')
+
+
+def validate_sop_id(sop_id: str):
+    """Reject sop_id values that could cause path traversal."""
+    if not sop_id or not _SOP_ID_RE.match(sop_id):
+        raise ValueError(f"Invalid SOP ID: {sop_id!r}")
 
 
 class SopManager:
@@ -36,6 +45,7 @@ class SopManager:
 
     def load(self, sop_id: str) -> SopDefinition:
         """Load an SOP definition from YAML file."""
+        validate_sop_id(sop_id)
         path = self.sop_dir / f"{sop_id}.yaml"
         if not path.exists():
             raise FileNotFoundError(f"SOP not found: {sop_id}")
@@ -47,6 +57,7 @@ class SopManager:
 
     def save(self, sop: SopDefinition):
         """Save an SOP definition to YAML file."""
+        validate_sop_id(sop.sop_id)
         path = self.sop_dir / f"{sop.sop_id}.yaml"
         data = {
             "sop_id": sop.sop_id,
@@ -80,6 +91,7 @@ class SopManager:
 
     def delete(self, sop_id: str) -> bool:
         """Delete an SOP definition file."""
+        validate_sop_id(sop_id)
         path = self.sop_dir / f"{sop_id}.yaml"
         if path.exists():
             path.unlink()

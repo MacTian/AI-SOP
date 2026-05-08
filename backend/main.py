@@ -176,6 +176,14 @@ async def lifespan(app: FastAPI):
 
     _reload_sop_cache()
 
+    # Wire up SOP change callback: reload rules + cache when SOPs are created/deleted
+    from backend.api.sop import set_on_change_callback
+    def _on_sop_change():
+        _load_sop_rules(sop_manager, rule_engine)
+        _reload_sop_cache()
+        logger.info("Reloaded SOP rules and cache after change")
+    set_on_change_callback(_on_sop_change)
+
     # Detection result callback: detection → rules → state machine → alert → db → ws
     def on_detection(result):
         """Process each detection through the full pipeline."""

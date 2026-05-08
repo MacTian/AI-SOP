@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from backend.config import settings
 from backend.sop.schema import SopDefinition, SopStep, StepRule
-from backend.sop.sop_manager import SopManager
+from backend.sop.sop_manager import SopManager, validate_sop_id
 from backend.api.auth import get_current_user
 
 router = APIRouter(prefix="/api/sop", tags=["SOP"], dependencies=[Depends(get_current_user)])
@@ -16,6 +16,14 @@ manager = SopManager()
 # Template manager points to templates subdirectory
 _template_dir = Path(settings.sop_dir) / "templates"
 _template_manager = SopManager(sop_dir=str(_template_dir))
+
+# Callback invoked after SOP create/delete, wired by main.py to reload rules
+_on_change_callback = None
+
+
+def set_on_change_callback(callback):
+    global _on_change_callback
+    _on_change_callback = callback
 
 
 class SopCreateRequest(BaseModel):
@@ -40,6 +48,8 @@ async def get_sop(sop_id: str):
     try:
         sop = manager.load(sop_id)
         return sop.model_dump()
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"SOP '{sop_id}' not found")
 
@@ -47,6 +57,7 @@ async def get_sop(sop_id: str):
 @router.post("/")
 async def create_sop(req: SopCreateRequest):
     """Create or update an SOP definition."""
+    validate_sop_id(req.sop_id)
     steps = []
     for i, s in enumerate(req.steps):
         rule_data = s.get("rule", {})
@@ -75,14 +86,21 @@ async def create_sop(req: SopCreateRequest):
         max_total_duration=req.max_total_duration,
     )
     manager.save(sop)
+    if _on_change_callback:
+        _on_change_callback()
     return {"status": "ok", "sop_id": sop.sop_id}
 
 
 @router.delete("/{sop_id}")
 async def delete_sop(sop_id: str):
     """Delete an SOP definition."""
-    if not manager.delete(sop_id):
-        raise HTTPException(status_code=404, detail=f"SOP '{sop_id}' not found")
+    try:
+        if not manager.delete(sop_id):
+            raise HTTPException(status_code=404, detail=f"SOP '{sop_id}' not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if _on_change_callback:
+        _on_change_callback()
     return {"status": "deleted", "sop_id": sop_id}
 
 
@@ -97,6 +115,7 @@ async def list_templates():
 @router.get("/templates/{template_id}")
 async def get_template(template_id: str):
     """Get a specific template definition."""
+    validate_sop_id(template_id)
     try:
         sop = _template_manager.load(template_id)
         return sop.model_dump()
@@ -113,6 +132,8 @@ class UseTemplateRequest(BaseModel):
 @router.post("/templates/{template_id}/use")
 async def use_template(template_id: str, req: UseTemplateRequest):
     """Create a new SOP based on a template."""
+    validate_sop_id(template_id)
+    validate_sop_id(req.sop_id)
     try:
         template = _template_manager.load(template_id)
     except FileNotFoundError:
@@ -128,4 +149,6 @@ async def use_template(template_id: str, req: UseTemplateRequest):
         max_total_duration=template.max_total_duration,
     )
     manager.save(new_sop)
+    if _on_change_callback:
+        _on_change_callback()
     return {"status": "ok", "sop_id": new_sop.sop_id, "step_count": len(new_sop.steps)}

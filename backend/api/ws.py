@@ -3,9 +3,11 @@
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from backend.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -50,12 +52,27 @@ manager = ConnectionManager()
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     """Main WebSocket endpoint. Clients receive real-time SOP events."""
+    # Authenticate via query param token
+    token = ws.query_params.get("token")
+    if not token:
+        await ws.close(code=4001, reason="Missing token")
+        return
+
+    try:
+        import jwt
+        payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+        username = payload.get("sub")
+        if not username:
+            await ws.close(code=4001, reason="Invalid token")
+            return
+    except Exception:
+        await ws.close(code=4001, reason="Invalid token")
+        return
+
     await manager.connect(ws)
     try:
         while True:
-            # Keep connection alive, handle client messages
             data = await ws.receive_text()
-            # Client can send ping/pong or commands
             if data == "ping":
                 await ws.send_text(json.dumps({"type": "pong"}))
     except WebSocketDisconnect:
@@ -70,7 +87,7 @@ async def broadcast_event(event_type: str, payload: dict):
     await manager.broadcast({
         "type": event_type,
         "payload": payload,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     })
 
 
@@ -82,5 +99,5 @@ async def heartbeat_loop(interval: int = 5):
             await manager.broadcast({
                 "type": "heartbeat",
                 "connections": manager.count,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             })

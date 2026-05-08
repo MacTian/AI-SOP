@@ -3,14 +3,19 @@
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from backend.api.auth import get_current_user
+
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["Video"])
+router = APIRouter(tags=["Video"], dependencies=[Depends(get_current_user)])
+
+_FILENAME_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
 
 # Will be set by main.py
 _capture = None
@@ -135,7 +140,7 @@ async def video_snapshot():
     from fastapi.responses import Response
 
     if _capture is None or not _capture.is_running:
-        return {"error": "Camera not available"}
+        raise HTTPException(status_code=503, detail="Camera not available")
 
     # Prefer annotated frame
     frame = None
@@ -145,7 +150,7 @@ async def video_snapshot():
     if frame is None:
         raw = _capture.get_frame()
         if raw is None:
-            return {"error": "No frame available"}
+            raise HTTPException(status_code=503, detail="No frame available")
         if _preprocessor:
             frame = _preprocessor.process(raw)
         else:
@@ -193,9 +198,14 @@ async def get_screenshot(filename: str):
     """Serve a saved screenshot image."""
     from fastapi.responses import Response
 
-    filepath = SCREENSHOTS_DIR / filename
+    if not _FILENAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    filepath = (SCREENSHOTS_DIR / filename).resolve()
+    if not filepath.is_relative_to(SCREENSHOTS_DIR.resolve()):
+        raise HTTPException(status_code=400, detail="Invalid filename")
     if not filepath.exists():
-        return {"error": "Screenshot not found"}
+        raise HTTPException(status_code=404, detail="Screenshot not found")
     return Response(content=filepath.read_bytes(), media_type="image/jpeg")
 
 
@@ -214,7 +224,7 @@ async def list_cameras():
 async def video_stream_camera(camera_id: int):
     """MJPEG stream for a specific camera in multi-camera mode."""
     if _multi_camera is None:
-        return {"error": "Multi-camera mode not active"}
+        raise HTTPException(status_code=503, detail="Multi-camera mode not active")
 
     async def generate():
         import cv2

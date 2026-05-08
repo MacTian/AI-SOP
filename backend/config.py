@@ -1,7 +1,12 @@
 """Application configuration using Pydantic Settings."""
 
+import logging
+import os
+import secrets
 from pathlib import Path
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -52,3 +57,12 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# Auto-generate secret key if default is still in use and no env var was set
+_DEFAULT_SECRET = "sop-monitor-secret-key-change-in-production"
+if settings.secret_key == _DEFAULT_SECRET and "SOP_SECRET_KEY" not in os.environ:
+    settings.secret_key = secrets.token_hex(32)
+    logger.warning(
+        "JWT secret_key auto-generated for this session. "
+        "Set SOP_SECRET_KEY env var for persistent deployments."
+    )
