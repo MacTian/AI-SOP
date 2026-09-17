@@ -1,333 +1,377 @@
 # AI SOP Monitor
 
-AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLOv8 进行目标检测，结合状态机和规则引擎，实时判断操作人员是否按照标准作业流程（SOP）执行操作。
+[🇨🇳 中文文档](README_zh.md) | [🇺🇸 English Documentation](README.md)
 
-## 功能特性
+---
 
-### 核心能力
-- **实时视频流** — MJPEG 摄像头画面，叠加 YOLO 检测框
-- **SOP 状态机** — 自动跟踪 SOP 步骤进度，支持超时检测
-- **命中帧确认** — 连续 N 帧检测到目标才确认步骤完成，防止单帧误触发
-- **规则引擎** — 可配置的检测规则（目标类型、置信度、数量要求）
-- **告警系统** — 多级告警（info/warning/error/critical），支持升级机制和声音提示
+AI real-time SOP (Standard Operating Procedure) compliance monitoring system. Captures video streams via camera, uses YOLOv8 for object detection, and combines state machines with rule engines to determine in real-time whether operators are following standard operating procedures (SOP).
 
-### AI 识别
-- **YOLOv8 目标检测** — 实时检测 80 类物体，支持 mock 模式
-- **MediaPipe 手部关键点** — 提取 21 个手部关键点 × 2 只手（126 维特征）
-- **LSTM 时序分类器** — 基于 YOLO + 手部特征的时序动作识别
-- **多尺度窗口投票** — 多窗口长度预测融合（16/32/48 帧），降低识别抖动
-- **Top3 候选展示** — Dashboard 实时显示最可能的 3 个步骤及置信度
+## Features
 
-### YOLO 数据标注与模型训练
-- **数据标注** — 支持**矩形框**和**多边形**两种标注模式，鼠标框选绘制，画布缩放/平移，Undo 撤销
-- **多边形标注** — 点击放置顶点，双击/右键闭合多边形，支持顶点吸附，精确标注不规则目标
-- **模型训练** — 上传 ZIP 数据集（支持 bbox + polygon 混合格式），配置训练参数，实时监控训练进度和指标（loss/mAP）
-- **数据导出** — 支持 YOLO 格式（bbox + segmentation）和 COCO JSON 格式导出
-- **国内镜像加速** — YOLO 预训练模型优先从国内镜像（ghfast.top）下载
-- **模型管理** — 训练完成后一键下载模型或设为当前检测模型
-- **YOLO 自动标注** — 基于当前检测器自动识别目标，生成标注建议
+### Core Capabilities
+- **Real-time Video Stream** — MJPEG camera feed with YOLO detection overlays
+- **SOP State Machine** — Automatically tracks SOP step progress with timeout detection
+- **Hit Frame Confirmation** — Requires N consecutive frames of target detection to confirm step completion, preventing single-frame false triggers
+- **Rule Engine** — Configurable detection rules (object types, confidence thresholds, quantity requirements)
+- **Alert System** — Multi-level alerts (info/warning/error/critical) with escalation mechanism and audio notifications
 
-### 数据管理
-- **自动截图归档** — 步骤完成时自动保存标注帧截图
-- **操作记录** — SQLite 存储所有检测事件，支持筛选查询
-- **CSV 导出** — 一键导出操作记录为 CSV 文件
-- **数据可视化** — ECharts 图表：检测时序、状态分布、完成率统计
+### AI Recognition
+- **YOLOv8 Object Detection** — Real-time detection of 80 object classes, supports mock mode for testing
+- **MediaPipe Hand Landmarks** — Extracts 21 hand landmarks × 2 hands (126-dimensional feature vector)
+- **LSTM Temporal Classifier** — Temporal action recognition based on YOLO + hand features
+- **Multi-scale Window Voting** — Prediction fusion across multiple window lengths (16/32/48 frames) to reduce recognition jitter
+- **Top-3 Candidate Display** — Dashboard shows top 3 most likely steps with confidence scores in real-time
 
-### SOP 管理
-- **SOP 模板库** — 4 个预置模板（电子组装、质量检测、包装、设备操作）
-- **SOP 编辑器** — 前端可视化创建/编辑 SOP
-- **训练功能** — 录像 → 自动分析步骤 → 手动优化 → 保存为 SOP
-- **视频文件分析** — 上传视频文件离线分析 SOP 合规性
+### YOLO Data Annotation & Model Training
+- **Data Annotation** — Supports both **bounding box** and **polygon** annotation modes with mouse-based drawing, canvas zoom/pan, and undo functionality
+- **Polygon Annotation** — Click to place vertices, double-click/right-click to close polygon, with vertex snapping for precise irregular target annotation
+- **Model Training** — Upload ZIP datasets (supports bbox + polygon mixed format), configure training parameters, monitor training progress and metrics (loss/mAP) in real-time
+- **Data Export** — Supports YOLO format (bbox + segmentation) and COCO JSON format
+- **Domestic Mirror Acceleration** — YOLO pre-trained models prioritized from domestic mirrors (ghfast.top) for faster downloads
+- **Model Management** — One-click model download or set as current detection model after training
+- **YOLO Auto-annotation** — Generates annotation suggestions based on current detector
 
-### 实时通信
-- **WebSocket 推送** — 前端自动刷新进度、告警、候选步骤
-- **全局 Toast 通知** — 告警弹窗 + Web Audio 声音提示
+### Data Management
+- **Automatic Screenshot Archiving** — Saves annotated frame screenshots when steps are completed
+- **Operation Records** — SQLite storage of all detection events with filtering and query support
+- **CSV Export** — One-click export of operation records to CSV
+- **Data Visualization** — ECharts charts: detection timeline, status distribution, completion rate statistics
 
-## 系统要求
+### SOP Management
+- **SOP Template Library** — 4 pre-built templates (electronic assembly, quality inspection, packaging, equipment operation)
+- **SOP Editor** — Frontend visual SOP creation and editing
+- **Training Function** — Record → Auto-analyze steps → Manual optimization → Save as SOP
+- **Video File Analysis** — Upload video files for offline SOP compliance analysis
 
-| 组件 | 要求 |
-|------|------|
+### Real-time Communication
+- **WebSocket Push** — Frontend auto-refreshes progress, alerts, and candidate steps
+- **Global Toast Notifications** — Alert pop-ups with Web Audio sound notifications
+
+## System Requirements
+
+| Component | Requirement |
+|-----------|------------|
 | Python | 3.10+ |
 | Node.js | 18+ |
-| 摄像头 | USB 摄像头（/dev/video0），或使用 mock 模式 |
-| 操作系统 | Windows 10/11 + WSL2 或 Ubuntu 22.04 |
-| GPU | 可选（有 CUDA 则自动使用 GPU 推理） |
+| Camera | USB camera (/dev/video0), or use mock mode |
+| Operating System | Windows 10/11 + WSL2 or Ubuntu 22.04 |
+| GPU | Optional (automatically uses GPU inference if CUDA available) |
 
-## 快速开始
+## Quick Start
 
-### 1. 安装依赖
+### 1. Install Dependencies
 
 ```bash
-# Python 依赖
+# Python dependencies
 pip install fastapi uvicorn opencv-python numpy pydantic pydantic-settings \
     aiofiles python-multipart pyyaml sqlalchemy ultralytics mediapipe torch
 
-# Node.js 依赖（需先安装 nvm）
+# Node.js dependencies (install nvm first)
 source ~/.nvm/nvm.sh && nvm use 18
 cd frontend && npm install
 ```
 
-### 2. 启动服务
+### 2. Start Services
 
 ```bash
-# 方式一：SPA 模式（推荐，一条命令启动全部）
+# Method 1: SPA mode (recommended, starts everything with one command)
 ./scripts/run_spa.sh
-# → 前端 build → static/ → 后端统一服务
-# → 浏览器打开 http://localhost:8000
+# → Frontend build → static/ → Backend unified service
+# → Open browser: http://localhost:8000
 
-# 方式二：开发模式（前端热重载 + 后端）
+# Method 2: Development mode (frontend hot reload + backend)
 ./scripts/run_dev.sh
-# → 后端 http://localhost:8000 + 前端 http://localhost:5173
+# → Backend: http://localhost:8000 + Frontend: http://localhost:5173
 
-# 方式三：Docker 部署
+# Method 3: Docker deployment
 docker compose up --build
 # → http://localhost:8000
 ```
 
-### 3. 访问系统
+### 3. Access System
 
-SPA 模式（推荐）：
+**SPA Mode (recommended):**
 
-| 地址 | 说明 |
-|------|------|
-| http://localhost:8000 | 完整应用（前端 + API + WebSocket） |
-| http://localhost:8000/docs | Swagger API 文档 |
-| http://localhost:8000/video/stream | MJPEG 视频流 |
+| URL | Description |
+|-----|-------------|
+| http://localhost:8000 | Full application (frontend + API + WebSocket) |
+| http://localhost:8000/docs | Swagger API documentation |
+| http://localhost:8000/video/stream | MJPEG video stream |
 
-开发模式：
+**Development Mode:**
 
-| 地址 | 说明 |
-|------|------|
-| http://localhost:5173 | 前端开发服务器（热重载） |
-| http://localhost:8000 | 后端 API |
+| URL | Description |
+|-----|-------------|
+| http://localhost:5173 | Frontend dev server (hot reload) |
+| http://localhost:8000 | Backend API |
 
-## 项目结构
+## Project Structure
 
 ```
 sop-monitor/
 ├── backend/
-│   ├── main.py                     # FastAPI 入口，生命周期管理
-│   ├── config.py                   # Pydantic Settings 配置
+│   ├── main.py                     # FastAPI entry point, lifecycle management
+│   ├── config.py                   # Pydantic Settings configuration
 │   ├── camera/
-│   │   ├── capture.py              # OpenCV 摄像头采集线程
-│   │   ├── multi_camera.py         # 多摄像头管理器
-│   │   └── preprocessor.py         # 图像预处理（resize, ROI, JPEG）
+│   │   ├── capture.py              # OpenCV camera capture thread
+│   │   ├── multi_camera.py         # Multi-camera manager
+│   │   └── preprocessor.py         # Image preprocessing (resize, ROI, JPEG)
 │   ├── inference/
-│   │   ├── detector.py             # YOLOv8 检测器（支持 mock fallback）
-│   │   ├── engine.py               # 推理引擎（采集→预处理→检测→标注）
-│   │   ├── hand_extractor.py       # MediaPipe 手部关键点提取
-│   │   ├── feature_fusion.py       # YOLO + 手部特征融合
-│   │   ├── lstm_classifier.py      # LSTM 分类器 + 多尺度投票
-│   │   ├── lstm_trainer.py         # LSTM 模型训练器
-│   │   ├── mock_data.py            # 合成训练数据生成
+│   │   ├── detector.py             # YOLOv8 detector (with mock fallback)
+│   │   ├── engine.py               # Inference engine (capture→preprocess→detect→annotate)
+│   │   ├── hand_extractor.py       # MediaPipe hand landmark extraction
+│   │   ├── feature_fusion.py       # YOLO + hand feature fusion
+│   │   ├── lstm_classifier.py      # LSTM classifier + multi-scale voting
+│   │   ├── lstm_trainer.py         # LSTM model trainer
+│   │   ├── mock_data.py            # Synthetic training data generator
 │   │   └── models/
-│   │       └── hand_landmarker.task # MediaPipe 手部检测模型
+│   │       └── hand_landmarker.task # MediaPipe hand detection model
 │   ├── extractor/
-│   │   ├── event.py                # SopEvent 数据类
-│   │   └── rule_engine.py          # 检测结果→SOP 步骤事件映射
+│   │   ├── event.py                # SopEvent data class
+│   │   └── rule_engine.py          # Detection→SOP step event mapping
 │   ├── sop/
-│   │   ├── schema.py               # SOP Pydantic 模型（含 confirm_frames）
-│   │   ├── state_machine.py        # SOP 状态机（命中帧确认 + 严格顺序）
-│   │   └── sop_manager.py          # SOP YAML 文件 CRUD
+│   │   ├── schema.py               # SOP Pydantic models (with confirm_frames)
+│   │   ├── state_machine.py        # SOP state machine (hit-frame confirmation)
+│   │   └── sop_manager.py          # SOP YAML file CRUD
 │   ├── alert/
-│   │   └── manager.py              # 告警管理（去重、升级、规则配置）
+│   │   └── manager.py              # Alert management (deduplication, escalation, rules)
 │   ├── training/
-│   │   ├── session.py              # 训练录像会话
-│   │   └── analyzer.py             # 步骤自动识别算法
+│   │   ├── session.py              # Training recording session
+│   │   └── analyzer.py             # Step auto-recognition algorithm
 │   ├── api/
-│   │   ├── auth.py                 # JWT 认证（登录 + 用户信息）
-│   │   ├── ws.py                   # WebSocket 实时推送
-│   │   ├── sop.py                  # SOP REST API + 模板
-│   │   ├── monitor.py              # 监控数据 + 记录查询 + CSV 导出 + 候选
-│   │   ├── video.py                # MJPEG 视频流 + 截图服务 + 多摄像头
-│   │   ├── video_analysis.py       # 视频文件上传分析
-│   │   ├── alert_config.py         # 告警规则 CRUD
-│   │   ├── stats.py                # 统计数据 API（ECharts 数据源）
-│   │   └── training.py             # 训练 API（录像 + LSTM 训练）
-│   │   ├── labeling.py             # YOLO 数据标注 API（自动标注）
-│   │   └── yolo_training.py        # YOLO 模型训练 API（数据集 + 训练 + 模型管理）
+│   │   ├── auth.py                 # JWT auth (login + user info)
+│   │   ├── ws.py                   # WebSocket real-time push
+│   │   ├── sop.py                  # SOP REST API + templates
+│   │   ├── monitor.py              # Monitor data + records query + CSV export + candidates
+│   │   ├── video.py                # MJPEG stream + snapshots + multi-camera
+│   │   ├── video_analysis.py       # Video file upload analysis
+│   │   ├── alert_config.py         # Alert rule CRUD
+│   │   ├── stats.py                # Statistics API (ECharts data source)
+│   │   ├── training.py             # Training API (recording + LSTM training)
+│   │   ├── labeling.py             # YOLO data annotation API (auto-labeling)
+│   │   └── yolo_training.py        # YOLO model training API (dataset + training + model management)
 │   └── models/
-│       ├── database.py             # SQLite 初始化 + 自动迁移 + 种子管理员
-│       ├── record.py               # OperationRecord ORM（含 screenshot_path）
-│       └── user.py                 # User ORM（username, hashed_password, role）
+│       ├── database.py             # SQLite init + auto-migration + admin seed
+│       ├── record.py               # OperationRecord ORM (with screenshot_path)
+│       └── user.py                 # User ORM (username, hashed_password, role)
 ├── frontend/src/
 │   ├── views/
-│   │   ├── Dashboard.vue           # 主监控（视频 + 进度 + 告警 + Top3 + 视频分析）
-│   │   ├── SopEditor.vue           # SOP 编辑页
-│   │   ├── History.vue             # 历史记录（截图查看 + CSV 导出）
-│   │   ├── Training.vue            # 训练页（录像 + LSTM 训练）
-	│   │   ├── Labeling.vue            # YOLO 数据标注（图片上传 + 画布标注 + 自动标注）
-	│   │   ├── ModelTraining.vue       # YOLO 模型训练（数据集上传 + 训练监控 + 模型下载）
-│   │   └── Login.vue               # 登录页面
+│   │   ├── Dashboard.vue           # Main monitor (video + progress + alerts + Top3 + video analysis)
+│   │   ├── SopEditor.vue           # SOP creation/editing/deletion
+│   │   ├── History.vue             # Operation records (screenshot viewing + CSV export)
+│   │   ├── Training.vue            # Training page (recording + LSTM training)
+│   │   ├── Labeling.vue            # YOLO data annotation (image upload + canvas drawing + auto-labeling)
+│   │   └── ModelTraining.vue       # YOLO model training (dataset upload + training monitoring + model download)
 │   ├── components/
-│   │   ├── VideoStream.vue         # 视频流组件
-│   │   ├── SopProgress.vue         # SOP 进度 + 命中帧进度
-│   │   ├── AlertPanel.vue          # 告警面板
-│   │   ├── AlertToast.vue          # 全局 toast + 声音
-│   │   ├── StatsChart.vue          # ECharts 统计图表
-│   │   ├── StepEditor.vue          # 拖拽步骤编辑器
-│   │   └── TemplateSelector.vue    # 模板选择弹窗
-│   ├── api/http.js                 # Axios 实例 + JWT 拦截器
-│   ├── composables/useWebSocket.js # 自动重连 WebSocket
+│   │   ├── VideoStream.vue         # Video stream component
+│   │   ├── SopProgress.vue         # SOP progress + hit-frame progress
+│   │   ├── AlertPanel.vue          # Alert panel
+│   │   ├── AlertToast.vue          # Global toast + web audio
+│   │   ├── StatsChart.vue          # ECharts statistics chart
+│   │   ├── StepEditor.vue          # Drag-and-drop step editor
+│   │   └── TemplateSelector.vue    # Template selection popup
+│   ├── api/http.js                 # Axios instance + JWT interceptor
+│   ├── composables/useWebSocket.js # Auto-reconnect WebSocket
 │   └── stores/
-│       ├── monitor.js              # Pinia 监控状态
-│       └── auth.js                 # Pinia 认证状态
+│       ├── monitor.js              # Pinia monitor state
+│       └── auth.js                 # Pinia auth state
 ├── sop_definitions/
-│   ├── example_assembly.yaml       # 示例 SOP
-│   └── templates/                  # 4 个预置模板
-├── tests/                          # 121 个测试用例
-├── scripts/                        # 启动脚本
-├── Dockerfile                      # 多阶段构建（前端 + 后端）
-├── docker-compose.yml              # Docker Compose 服务定义
-└── requirements.txt                # Python 依赖清单
+│   ├── example_assembly.yaml       # Example SOP
+│   └── templates/                  # 4 pre-built templates
+├── tests/                          # 125 test cases
+├── scripts/                        # Startup scripts
+├── Dockerfile                      # Multi-stage build (frontend + backend)
+├── docker-compose.yml              # Docker Compose service definition
+└── requirements.txt                # Python dependency list
 ```
 
-## SOP 定义文件
+## SOP Definition File
 
-SOP 使用 YAML 格式定义，存放在 `sop_definitions/` 目录下：
+SOP uses YAML format, stored in `sop_definitions/` directory:
 
 ```yaml
 sop_id: example_assembly
 name: "PCB Assembly Example"
 steps:
   - step_id: step_1
-    name: "拿起 PCB 板"
+    name: "Pick up PCB board"
     order: 0
     timeout: 60
     rule:
       expected_objects: ["board", "hand"]
       min_confidence: 0.6
       required_count: 1
-      confirm_frames: 3    # 连续 3 帧确认才完成
+      confirm_frames: 3    # Consecutive frames required for confirmation
 ```
 
-## API 接口
+## API Endpoints
 
-### 认证
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/auth/login` | 登录（form-data: username, password） |
-| GET | `/api/auth/me` | 获取当前用户信息 |
+### Authentication
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/auth/login` | Login (form-data: username, password) |
+| GET | `/api/auth/me` | Get current user info |
 
-### SOP 管理
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/sop/list` | 列出所有 SOP |
-| GET | `/api/sop/{sop_id}` | 获取 SOP 详情 |
-| POST | `/api/sop/` | 创建/更新 SOP |
-| DELETE | `/api/sop/{sop_id}` | 删除 SOP |
-| GET | `/api/sop/templates/list` | 列出模板 |
-| POST | `/api/sop/templates/{id}/use` | 从模板创建 SOP |
+### SOP Management
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/sop/list` | List all SOPs |
+| GET | `/api/sop/{sop_id}` | Get SOP details |
+| POST | `/api/sop/` | Create/update SOP |
+| DELETE | `/api/sop/{sop_id}` | Delete SOP |
+| GET | `/api/sop/templates/list` | List templates |
+| POST | `/api/sop/templates/{id}/use` | Create SOP from template |
 
-### 监控数据
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/monitor/status` | 当前所有活跃 SOP 状态 |
-| GET | `/api/monitor/detection/candidates` | Top3 候选步骤 |
-| GET | `/api/monitor/records` | 操作记录查询 |
-| GET | `/api/monitor/records/export` | CSV 导出 |
-| GET | `/api/monitor/alerts` | 最近告警列表 |
+### Monitor Data
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/monitor/status` | Current active SOP statuses |
+| GET | `/api/monitor/detection/candidates` | Top-3 candidate steps |
+| GET | `/api/monitor/records` | Operation records query |
+| GET | `/api/monitor/records/export` | CSV export |
+| GET | `/api/monitor/alerts` | Recent alerts list |
 
-### 视频
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/video/stream` | MJPEG 视频流 |
-| GET | `/video/snapshot` | 单帧 JPEG 截图 |
-| GET | `/video/screenshots/{filename}` | 获取截图 |
-| GET | `/video/cameras` | 列出活跃摄像头 |
-| GET | `/video/stream/{camera_id}` | 指定摄像头 MJPEG 流 |
-| POST | `/api/video/analyze` | 上传视频文件分析 |
+### Video
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/video/stream` | MJPEG video stream |
+| GET | `/video/snapshot` | Single JPEG snapshot |
+| GET | `/video/screenshots/{filename}` | Get screenshot file |
+| GET | `/video/cameras` | List active cameras |
+| GET | `/video/stream/{camera_id}` | Specific camera MJPEG stream |
+| POST | `/api/video/analyze` | Upload video file for analysis |
 
-### 训练
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/training/start` | 开始训练录像 |
-| POST | `/api/training/stop` | 停止录像 + 分析 |
-| POST | `/api/training/save` | 保存为 SOP |
-| POST | `/api/training/lstm/train` | 训练 LSTM 模型 |
-| GET | `/api/training/lstm/status` | LSTM 训练状态 |
+### Training
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/training/start` | Start training recording |
+| POST | `/api/training/stop` | Stop recording + analyze |
+| POST | `/api/training/save` | Save as SOP |
+| POST | `/api/training/lstm/train` | Train LSTM model |
+| GET | `/api/training/lstm/status` | LSTM training status |
 
-### YOLO 数据标注
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/label/auto` | 单张图片 YOLO 自动标注（返回 bbox 建议） |
-| POST | `/api/label/batch` | 批量图片 YOLO 自动标注 |
+### YOLO Data Annotation
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/label/auto` | Single image YOLO auto-labeling (returns bbox suggestions) |
+| POST | `/api/label/batch` | Batch image YOLO auto-labeling |
 
-支持标注类型：
-- **矩形框 (box)** — 拖拽绘制，YOLO 格式：`class cx cy w h`
-- **多边形 (polygon)** — 点击顶点闭合，YOLO 分割格式：`class x1 y1 x2 y2 ...`
+**Annotation Types:**
+- **Bounding Box (box)** — Drag to draw, YOLO format: `class cx cy w h`
+- **Polygon (polygon)** — Click to place vertices, close with double-click/right-click, YOLO segmentation format: `class x1 y1 x2 y2 ...`
 
-### YOLO 模型训练
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/training/yolo/dataset/upload` | 上传数据集 ZIP |
-| POST | `/api/training/yolo/start` | 开始 YOLO 训练 |
-| POST | `/api/training/yolo/stop` | 停止训练 |
-| GET | `/api/training/yolo/status` | 训练状态与指标 |
-| GET | `/api/training/yolo/download` | 下载训练好的模型 |
-| POST | `/api/training/yolo/use` | 设为当前检测模型 |
+### YOLO Model Training
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/training/yolo/dataset/upload` | Upload dataset ZIP |
+| POST | `/api/training/yolo/start` | Start YOLO training |
+| POST | `/api/training/yolo/stop` | Stop training |
+| GET | `/api/training/yolo/status` | Training status and metrics |
+| GET | `/api/training/yolo/download` | Download trained model |
+| POST | `/api/training/yolo/use` | Set as current detection model |
 
-### 统计 & 告警
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/stats/summary` | 总体统计摘要 |
-| GET | `/api/stats/timeline` | 时序数据 |
-| GET | `/api/alerts/rules` | 告警规则 |
-| POST | `/api/alerts/rules` | 创建告警规则 |
+### Statistics & Alerts
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/stats/summary` | Overall statistics summary |
+| GET | `/api/stats/timeline` | Timeline data |
+| GET | `/api/alerts/rules` | Alert rules |
+| POST | `/api/alerts/rules` | Create alert rule |
 
-## 配置项
+## Configuration
 
-通过环境变量或 `.env` 文件配置（前缀 `SOP_`）：
+Configure via environment variables or `.env` file (prefix `SOP_`):
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `SOP_CAMERA_DEVICE` | 0 | 摄像头设备号 |
-| `SOP_CAMERA_DEVICES` | "" | 多摄像头设备号（逗号分隔，如 "0,1,2"） |
-| `SOP_CAMERA_FPS` | 15 | 采集帧率 |
-| `SOP_MODEL_PATH` | models/yolov8n.pt | YOLO 模型路径 |
-| `SOP_CONFIDENCE_THRESHOLD` | 0.5 | 检测置信度阈值 |
-| `SOP_INFERENCE_INTERVAL` | 0.5 | 推理间隔（秒） |
-| `SOP_DEFAULT_CONFIRM_FRAMES` | 3 | 默认命中帧确认数 |
-| `SOP_STRICT_ORDER` | false | 严格顺序模式（禁止跳步） |
-| `SOP_ALERT_COOLDOWN` | 30 | 告警去重冷却（秒） |
-| `SOP_SECRET_KEY` | sop-monitor-secret-key... | JWT 签名密钥（生产环境请修改） |
-| `SOP_TOKEN_EXPIRE_MINUTES` | 480 | Token 有效期（分钟） |
-| `SOP_DEFAULT_ADMIN_PASSWORD` | admin123 | 默认管理员密码 |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SOP_CAMERA_DEVICE` | 0 | Camera device index |
+| `SOP_CAMERA_DEVICES` | "" | Multi-camera device IDs (comma-separated, e.g., "0,1,2") |
+| `SOP_CAMERA_FPS` | 15 | Capture frame rate |
+| `SOP_MODEL_PATH` | models/yolov8n.pt | YOLO model path |
+| `SOP_CONFIDENCE_THRESHOLD` | 0.5 | Detection confidence threshold |
+| `SOP_INFERENCE_INTERVAL` | 0.5 | Inference interval (seconds) |
+| `SOP_DEFAULT_CONFIRM_FRAMES` | 3 | Default hit-frame confirmation count |
+| `SOP_STRICT_ORDER` | false | Strict order mode (disallow step skipping) |
+| `SOP_ALERT_COOLDOWN` | 30 | Alert deduplication cooldown (seconds) |
+| `SOP_SECRET_KEY` | sop-monitor-secret-key... | JWT signing key (change in production) |
+| `SOP_TOKEN_EXPIRE_MINUTES` | 480 | Token expiration (minutes) |
+| `SOP_DEFAULT_ADMIN_PASSWORD` | admin123 | Default admin password |
 
-## 测试
+## Testing
 
 ```bash
-cd /home/mac/sop-monitor
-python3 -m pytest tests/ -v
+cd /home/mac/AI-SOP
+python -m pytest tests/ -v
 ```
 
-125 个测试覆盖：SOP schema、状态机（含命中帧确认 + 严格顺序）、规则引擎、告警管理、检测器、SOP 管理、训练功能、LSTM 分类器、多摄像头、JWT 认证、全部 API 端点。
+125 test cases covering: SOP schema, state machine (hit-frame confirmation + strict order), rule engine, alert management, detector, SOP management, training functions, LSTM classifier, multi-camera, JWT auth, all API endpoints.
 
-## 默认账户
+## Default Account
 
-首次启动自动创建管理员账户：
+Admin account auto-created on first launch:
 
-| 用户名 | 密码 | 角色 |
-|--------|------|------|
+| Username | Password | Role |
+|----------|----------|------|
 | admin | admin123 | admin |
 
-生产环境请通过 `SOP_DEFAULT_ADMIN_PASSWORD` 环境变量修改密码，并设置 `SOP_SECRET_KEY` 为随机密钥。
+**Production note:** Change password via `SOP_DEFAULT_ADMIN_PASSWORD` environment variable and set `SOP_SECRET_KEY` to a random secret.
 
-## 运行流程
+## Data Flow
 
 ```
-摄像头 → 采集线程 → 预处理 → YOLOv8 检测 → 规则引擎 → 状态机（命中帧确认）→ 告警管理
-                                    ↓                                           ↓
-                              MediaPipe 手部                               自动截图归档
-                                    ↓                                           ↓
-                            特征融合 → LSTM 分类                             数据库记录
-                                    ↓                                           ↓
-                            Top3 候选计算                                  WebSocket 广播
-                                    ↓                                           ↓
-                              Dashboard 显示                              ECharts 图表
+Camera(s) → CameraCapture (thread) → ImagePreprocessor → YOLOv8 Detector
+                                                          ↓
+                                                   MediaPipe HandExtractor
+                                                          ↓
+                                                   FeatureFusion (YOLO + hand)
+                                                          ↓
+                                                   LSTM MultiScaleVoter (optional)
+                                                          ↓
+                                                   RuleEngine.evaluate()
+                                                          ↓
+                                                   StateMachineEngine.process_event()
+                                                          ↓
+                                        ┌─────────────────┼─────────────────┐
+                                   AlertManager      DB Record (SQLite)    WebSocket → Frontend
+                                        ↓
+                                   Screenshot saved
 ```
 
-## English Documentation
+## Backend Architecture
 
-For English documentation, please see [README_EN.md](./README_EN.md).
+### Modules
 
+- **camera/** — Camera capture (OpenCV thread), multi-camera manager, preprocessing
+- **inference/** — YOLOv8 detection, MediaPipe hand extraction, feature fusion, LSTM classifier, mock data generation
+- **extractor/** — Detection→SOP event mapping via rule engine
+- **sop/** — SOP YAML CRUD, state machine with hit-frame confirmation
+- **alert/** — Alert deduplication, escalation, rule-based management
+- **training/** — Training recording sessions, step auto-recognition
+- **api/** — REST API routes (auth, SOP, monitor, video, training, YOLO labeling)
+- **models/** — SQLite database, ORM models (User, OperationRecord)
+
+## Frontend Architecture
+
+- **Vue 3 Composition API** with **Pinia** state management
+- **Vite** build tool with **TailwindCSS** styling
+- **ECharts** for data visualization
+- **WebSocket** for real-time updates with auto-reconnect
+- **Web Audio API** for alert sound notifications
+
+## Key Design Patterns
+
+1. **Mock Degradation** — YOLO detector, hand extractor, and gesture classifier have graceful mock fallback for development without GPU or camera
+2. **Category Mapping Layer** — SOP semantic names (board, tool, solder) → configurable COCO detectable class mapping
+3. **Hit-Frame Confirmation** — Requires `confirm_frames` (default 3) consecutive detections to advance steps, preventing false triggers
+4. **Strict Order Mode** — Optional `strict_order` configuration to reject non-current step events
+5. **Multi-Camera Support** — Each camera runs independent capture+inference pipeline with unified callback
+6. **Feature Fusion** — YOLO features (80 classes × count+confidence = 160-dim) + MediaPipe hand landmarks (126-dim) = 286-dim fusion vector
+7. **Dual Delivery** — FastAPI serves both REST API and built Vue SPA (catch-all route)
+
+## License
+
+This project is licensed under the MIT License.
+
+---
+
+**Documentation:** [🇨🇳 中文版](README_zh.md) | [🇺🇸 English Version](README.md)
