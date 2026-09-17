@@ -326,3 +326,8 @@ python3 -m pytest tests/ -v
                                     ↓                                           ↓
                               Dashboard 显示                              ECharts 图表
 ```
+
+## English Documentation
+
+For English documentation, please see [README_EN.md](./README_EN.md).
+
