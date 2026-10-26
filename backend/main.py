@@ -17,6 +17,7 @@ from backend.camera.preprocessor import ImagePreprocessor
 from backend.inference.detector import Detector
 from backend.inference.engine import InferenceEngine
 from backend.extractor.rule_engine import RuleEngine
+from backend.extractor.event import SopEvent
 from backend.sop.state_machine import StateMachineEngine
 from backend.sop.sop_manager import SopManager
 from backend.alert.manager import AlertManager
@@ -54,6 +55,12 @@ multi_camera: MultiCameraManager | None = None
 state_machine: StateMachineEngine | None = None
 alert_manager: AlertManager | None = None
 rule_engine: RuleEngine | None = None
+
+# Event loop captured during startup, used to broadcast from worker threads
+_loop: asyncio.AbstractEventLoop | None = None
+# Background supervisors (kept as module attributes so tests can inspect them)
+_heartbeat_task: asyncio.Task | None = None
+_timeout_task: asyncio.Task | None = None
 
 
 def _load_sop_rules(sop_mgr: SopManager, rules: RuleEngine):
@@ -100,12 +107,91 @@ def _save_record(event, screenshot_path=None):
         db.close()
 
 
+def _broadcast(event_type: str, payload: dict):
+    """Schedule a WebSocket broadcast. Safe to call from any thread."""
+    if _loop is None or _loop.is_closed():
+        return
+    try:
+        _loop.call_soon_threadsafe(
+            asyncio.ensure_future, broadcast_event(event_type, payload)
+        )
+    except RuntimeError:
+        pass  # Loop shutting down
+
+
+def _alert_payload(alert) -> dict:
+    """Serialize an Alert for WebSocket delivery."""
+    return {
+        "alert_id": alert.alert_id,
+        "level": alert.level,
+        "sop_id": alert.sop_id,
+        "step_id": alert.step_id,
+        "step_name": alert.step_name,
+        "message": alert.message,
+        "timestamp": alert.timestamp.isoformat(),
+    }
+
+
+def _process_timeouts() -> list[tuple[SopEvent, object]]:
+    """Scan active SOP instances and turn timed-out steps into real events.
+
+    Returns a list of (event, alert) pairs that were emitted. Separated from the
+    background loop so it can be exercised directly by tests.
+    """
+    if state_machine is None:
+        return []
+
+    emitted: list[tuple[SopEvent, object]] = []
+    for sop_id, step_ids in state_machine.check_all_timeouts().items():
+        instance = state_machine.get_instance(sop_id)
+        if instance is None:
+            continue
+
+        steps_by_id = {step.step_id: step for step in instance.definition.steps}
+        for step_id in step_ids:
+            step = steps_by_id.get(step_id)
+            event = SopEvent(
+                sop_id=sop_id,
+                step_id=step_id,
+                step_name=step.name if step else step_id,
+                status="timeout",
+                details={"timeout": step.timeout if step else None},
+            )
+            alert = alert_manager.process_event(event) if alert_manager else None
+            _save_record(event)
+            emitted.append((event, alert))
+
+        # A timed-out step is terminal — don't let it deadlock the whole SOP
+        instance.advance()
+
+    return emitted
+
+
+async def timeout_loop(interval: float):
+    """Periodically check every active SOP for timed-out steps."""
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            for event, alert in _process_timeouts():
+                await broadcast_event("sop_event", event.to_dict())
+                if alert:
+                    await broadcast_event("alert", _alert_payload(alert))
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Timeout sweep failed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
     global camera, inference_engine, multi_camera, state_machine, alert_manager, rule_engine
+    global _loop
 
     logger.info("Starting AI SOP Monitor...")
+
+    # Capture the running loop so worker threads can schedule broadcasts
+    _loop = asyncio.get_running_loop()
 
     # Initialize database
     init_db()
@@ -251,28 +337,10 @@ async def lifespan(app: FastAPI):
                 _save_record(event, screenshot_path)
 
                 # Broadcast via WebSocket (fire-and-forget from sync thread)
-                try:
-                    loop = asyncio.get_event_loop()
-                    if state_changed:
-                        loop.call_soon_threadsafe(
-                            asyncio.ensure_future,
-                            broadcast_event("sop_event", event.to_dict()),
-                        )
-                    if alert:
-                        loop.call_soon_threadsafe(
-                            asyncio.ensure_future,
-                            broadcast_event("alert", {
-                                "alert_id": alert.alert_id,
-                                "level": alert.level,
-                                "sop_id": alert.sop_id,
-                                "step_id": alert.step_id,
-                                "step_name": alert.step_name,
-                                "message": alert.message,
-                                "timestamp": alert.timestamp.isoformat(),
-                            }),
-                        )
-                except RuntimeError:
-                    pass  # No event loop running yet
+                if state_changed:
+                    _broadcast("sop_event", event.to_dict())
+                if alert:
+                    _broadcast("alert", _alert_payload(alert))
 
         # Update top-3 candidates (include gesture info)
         for candidate in all_candidates:
@@ -285,24 +353,17 @@ async def lifespan(app: FastAPI):
 
         # Broadcast gesture updates if any detected
         if gesture_results:
-            try:
-                loop = asyncio.get_event_loop()
-                loop.call_soon_threadsafe(
-                    asyncio.ensure_future,
-                    broadcast_event("gesture", {
-                        "gestures": [
-                            {
-                                "gesture": g.gesture,
-                                "confidence": g.confidence,
-                                "hand": g.hand_index,
-                                "finger_curl": g.finger_curl,
-                            }
-                            for g in gesture_results
-                        ]
-                    }),
-                )
-            except RuntimeError:
-                pass
+            _broadcast("gesture", {
+                "gestures": [
+                    {
+                        "gesture": g.gesture,
+                        "confidence": g.confidence,
+                        "hand": g.hand_index,
+                        "finger_curl": g.finger_curl,
+                    }
+                    for g in gesture_results
+                ]
+            })
 
     inference_engine.set_result_callback(on_detection)
 
@@ -327,14 +388,23 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning("Camera not available - running in API-only mode")
 
-    # Start heartbeat background task
-    heartbeat_task = asyncio.create_task(heartbeat_loop())
+    # Start heartbeat + timeout supervision background tasks
+    global _heartbeat_task, _timeout_task
+    _heartbeat_task = asyncio.create_task(heartbeat_loop())
+    _timeout_task = asyncio.create_task(
+        timeout_loop(settings.timeout_check_interval)
+    )
 
     yield
 
     # Shutdown
     logger.info("Shutting down AI SOP Monitor...")
-    heartbeat_task.cancel()
+    tasks = [t for t in (_heartbeat_task, _timeout_task) if t is not None]
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    _heartbeat_task = None
+    _timeout_task = None
     if multi_camera:
         multi_camera.stop()
     if inference_engine:
@@ -374,24 +444,8 @@ app.include_router(labeling_router)
 app.include_router(yolo_training_router)
 
 
-# Serve built frontend as SPA (static/ directory)
+# Static frontend directory (populated by `npm run build`)
 _static_dir = Path(__file__).parent.parent / "static"
-if _static_dir.is_dir():
-    # Serve assets with proper MIME types and caching
-    app.mount("/assets", StaticFiles(directory=str(_static_dir / "assets")), name="assets")
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str):
-        """Catch-all: serve frontend files or fall back to index.html for SPA routing."""
-        # Don't intercept API/WS/docs/health/screenshots routes
-        if full_path.startswith(("api/", "video/", "ws/", "docs", "openapi", "health", "screenshots/")):
-            raise HTTPException(status_code=404)
-        file_path = _static_dir / full_path
-        if file_path.is_file():
-            from fastapi.responses import FileResponse
-            return FileResponse(str(file_path))
-        from fastapi.responses import FileResponse
-        return FileResponse(str(_static_dir / "index.html"))
 
 
 @app.get("/")
@@ -414,3 +468,23 @@ async def health():
         "camera": camera.is_running if camera else False,
         "inference": inference_engine._running if inference_engine else False,
     }
+
+
+# NOTE: the SPA catch-all must be registered LAST — FastAPI matches routes in
+# registration order, so registering it earlier would shadow `/` and `/health`.
+if _static_dir.is_dir():
+    # Serve assets with proper MIME types and caching
+    app.mount("/assets", StaticFiles(directory=str(_static_dir / "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        """Catch-all: serve frontend files or fall back to index.html for SPA routing."""
+        # Don't intercept API/WS/docs/health/screenshots routes
+        if full_path.startswith(("api/", "video/", "ws/", "docs", "openapi", "health", "screenshots/")):
+            raise HTTPException(status_code=404)
+        file_path = _static_dir / full_path
+        if file_path.is_file():
+            from fastapi.responses import FileResponse
+            return FileResponse(str(file_path))
+        from fastapi.responses import FileResponse
+        return FileResponse(str(_static_dir / "index.html"))

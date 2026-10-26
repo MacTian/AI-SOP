@@ -8,9 +8,15 @@ import pytest
 def test_root(client):
     resp = client.get("/")
     assert resp.status_code == 200
-    data = resp.json()
-    assert data["name"] == "AI SOP Monitor"
-    assert data["status"] == "running"
+    if "application/json" in resp.headers.get("content-type", ""):
+        # API-only mode (frontend not built)
+        data = resp.json()
+        assert data["name"] == "AI SOP Monitor"
+        assert data["status"] == "running"
+    else:
+        # SPA mode: the built frontend is served
+        assert "text/html" in resp.headers["content-type"]
+        assert "<div id=\"app\">" in resp.text or "id=app" in resp.text
 
 
 def test_health(client):
@@ -194,10 +200,58 @@ def test_stats_sop_completion(client, auth_headers):
 
 # --- Video API ---
 
-def test_video_snapshot_no_camera(client):
-    # Video endpoints are public (no auth required)
+def test_video_snapshot_is_public(client):
+    # Video endpoints must stay public: the frontend renders the stream with a
+    # plain <img> tag, which cannot carry an Authorization header.
     resp = client.get("/video/snapshot")
-    assert resp.status_code == 200
+    assert resp.status_code in (200, 503), resp.status_code
+    assert resp.status_code != 401
+
+
+def test_screenshot_is_public_and_served(client):
+    """Screenshots live at /screenshots/{filename} and need no auth either."""
+    from backend.api import video as video_api
+
+    video_api.SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+    name = "test_screenshot_pytest.jpg"
+    path = video_api.SCREENSHOTS_DIR / name
+    path.write_bytes(b"\xff\xd8\xff\xd9")  # minimal JPEG marker pair
+    try:
+        resp = client.get(f"/screenshots/{name}")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/jpeg"
+        assert resp.content == b"\xff\xd8\xff\xd9"
+
+        # The old (wrong) frontend path must not exist any more
+        assert client.get(f"/video/screenshots/{name}").status_code == 404
+
+        # Path traversal / bad names are still rejected
+        assert client.get("/screenshots/..%2Fsecret.txt").status_code in (400, 404)
+        assert client.get("/screenshots/missing.jpg").status_code == 404
+    finally:
+        path.unlink(missing_ok=True)
+
+
+# --- WebSocket ---
+
+def test_ws_rejects_missing_token(client):
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect("/ws") as ws:
+            ws.receive_text()
+
+
+def test_ws_accepts_valid_token(client):
+    from starlette.websockets import WebSocketDisconnect
+
+    token = client.post(
+        "/api/auth/login", data={"username": "admin", "password": "admin123"}
+    ).json()["access_token"]
+
+    with client.websocket_connect(f"/ws?token={token}") as ws:
+        ws.send_text("ping")
+        assert ws.receive_json()["type"] == "pong"
 
 
 # --- Template API ---
@@ -276,16 +330,18 @@ def test_training_start_and_stop(client, auth_headers):
     resp = client.get("/api/training/status", headers=auth_headers)
     assert resp.json()["status"] == "recording"
 
-    # Stop (no frames recorded, but session exists)
+    # Stop with no frames recorded → 400, "nothing to analyze" is a client error
     resp = client.post("/api/training/stop", headers=auth_headers)
-    assert resp.status_code == 200
+    assert resp.status_code == 400
+    assert "No frames" in resp.json()["detail"]
 
 
 def test_training_result_empty(client, auth_headers):
+    # Nothing analysed yet → 404 with an explanatory message
+    client.post("/api/training/reset", headers=auth_headers)
     resp = client.get("/api/training/result", headers=auth_headers)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "error" in data or "steps" in data
+    assert resp.status_code == 404
+    assert "No analysis result" in resp.json()["detail"]
 
 
 def test_training_reset(client, auth_headers):

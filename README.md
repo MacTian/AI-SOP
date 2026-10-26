@@ -226,6 +226,8 @@ steps:
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/monitor/status` | Current active SOP statuses |
+| POST | `/api/monitor/start/{sop_id}` | Start monitoring a SOP instance |
+| POST | `/api/monitor/stop/{sop_id}` | Stop a running SOP instance |
 | GET | `/api/monitor/detection/candidates` | Top-3 candidate steps |
 | GET | `/api/monitor/records` | Operation records query |
 | GET | `/api/monitor/records/export` | CSV export |
@@ -236,7 +238,7 @@ steps:
 |--------|------|-------------|
 | GET | `/video/stream` | MJPEG video stream |
 | GET | `/video/snapshot` | Single JPEG snapshot |
-| GET | `/video/screenshots/{filename}` | Get screenshot file |
+| GET | `/screenshots/{filename}` | Get screenshot file |
 | GET | `/video/cameras` | List active cameras |
 | GET | `/video/stream/{camera_id}` | Specific camera MJPEG stream |
 | POST | `/api/video/analyze` | Upload video file for analysis |
