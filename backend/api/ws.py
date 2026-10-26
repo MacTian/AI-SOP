@@ -59,7 +59,10 @@ async def websocket_endpoint(ws: WebSocket):
         return
 
     try:
-        import jwt
+        # Must use the same JWT library as auth.py (python-jose); PyJWT is not a
+        # dependency of this project, so `import jwt` would always fail here.
+        from jose import jwt
+
         payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
         username = payload.get("sub")
         if not username:

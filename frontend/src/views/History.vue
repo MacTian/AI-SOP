@@ -151,9 +151,9 @@ function statusClass(status) {
 
 function previewScreenshot(path) {
   // path is absolute like /home/mac/sop-monitor/screenshots/xxx.jpg
-  // Extract filename for the API endpoint
+  // Extract filename for the API endpoint (served by backend/api/video.py)
   const filename = path.split('/').pop()
-  previewUrl.value = `/video/screenshots/${filename}`
+  previewUrl.value = `/screenshots/${filename}`
 }
 
 function exportCsv() {

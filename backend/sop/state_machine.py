@@ -86,6 +86,14 @@ class SopInstance:
         self.completed_at = time.time()
         logger.info(f"SOP {self.definition.sop_id} fully completed")
 
+    def advance(self):
+        """Public wrapper: move on to the next pending step.
+
+        Used after a step reached a terminal failure state (timeout/error), so a
+        single missed step does not deadlock the whole SOP.
+        """
+        self._advance()
+
     def check_timeouts(self) -> list[str]:
         """Check for timed-out steps. Returns list of timed-out step IDs."""
         now = time.time()

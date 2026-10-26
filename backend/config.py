@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # State machine
     default_confirm_frames: int = 3  # consecutive hits needed to confirm step
     strict_order: bool = False  # reject events for non-current steps
+    timeout_check_interval: float = 2.0  # seconds between timeout sweeps
 
     # CORS
     cors_origins: list[str] = [
