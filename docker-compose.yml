@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   sop-monitor:
     build: .
@@ -16,7 +14,6 @@ services:
       - SOP_CONFIDENCE_THRESHOLD=0.5
       - SOP_INFERENCE_INTERVAL=0.5
       - SOP_DEFAULT_CONFIRM_FRAMES=3
-      - SOP_SECRET_KEY=CHANGE_ME_TO_A_RANDOM_SECRET
       - SOP_DEFAULT_ADMIN_PASSWORD=admin123
     devices:
       - /dev/video0:/dev/video0

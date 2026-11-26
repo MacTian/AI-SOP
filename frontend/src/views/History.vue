@@ -81,11 +81,11 @@
     <div
       v-if="previewUrl"
       class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
-      @click.self="previewUrl = null"
+      @click.self="closePreview"
     >
       <div class="relative max-w-4xl max-h-[90vh]">
         <button
-          @click="previewUrl = null"
+          @click="closePreview"
           class="absolute -top-3 -right-3 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow-lg text-gray-600 hover:text-gray-900 z-10"
         >
           &times;
@@ -149,18 +149,47 @@ function statusClass(status) {
   return map[status] || 'bg-gray-100 text-gray-700'
 }
 
-function previewScreenshot(path) {
-  // path is absolute like /home/mac/sop-monitor/screenshots/xxx.jpg
-  // Extract filename for the API endpoint
-  const filename = path.split('/').pop()
-  previewUrl.value = `/video/screenshots/${filename}`
+function closePreview() {
+  if (previewUrl.value?.startsWith('blob:')) {
+    URL.revokeObjectURL(previewUrl.value)
+  }
+  previewUrl.value = null
 }
 
-function exportCsv() {
+async function previewScreenshot(path) {
+  // path is absolute like /home/mac/sop-monitor/screenshots/xxx.jpg
+  // Extract filename for the API endpoint (served by backend/api/video.py)
+  const filename = path.split('/').pop()
+  try {
+    const { data } = await http.get(`/screenshots/${encodeURIComponent(filename)}`, {
+      responseType: 'blob',
+    })
+    closePreview()
+    previewUrl.value = URL.createObjectURL(data)
+  } catch {
+    closePreview()
+  }
+}
+
+async function exportCsv() {
   const params = new URLSearchParams()
   if (selectedSop.value) params.set('sop_id', selectedSop.value)
-  const url = `/api/monitor/records/export${params.toString() ? '?' + params : ''}`
-  window.open(url, '_blank')
+  try {
+    const { data } = await http.get('/api/monitor/records/export', {
+      params: Object.fromEntries(params),
+      responseType: 'blob',
+    })
+    const url = URL.createObjectURL(data)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'operation_records.csv'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch {
+    // The shared HTTP interceptor handles authentication failures.
+  }
 }
 
 watch(selectedSop, fetchRecords)
@@ -171,5 +200,8 @@ onMounted(() => {
   fetchRecords()
   startAutoRefresh()
 })
-onUnmounted(stopAutoRefresh)
+onUnmounted(() => {
+  stopAutoRefresh()
+  closePreview()
+})
 </script>

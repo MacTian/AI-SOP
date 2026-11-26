@@ -1,5 +1,9 @@
 """Tests for alert manager."""
 
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
+
 from backend.alert.manager import AlertManager, AlertRule
 from backend.extractor.event import SopEvent
 
@@ -54,6 +58,35 @@ def test_alert_deduplication():
     # Second same alert within cooldown should be suppressed
     alert2 = am.process_event(make_event(status="error"))
     assert alert2 is None
+
+
+def test_alert_deduplication_is_atomic_across_threads():
+    am = AlertManager(cooldown=60)
+    worker_count = 32
+    barrier = threading.Barrier(worker_count)
+
+    serial_manager = AlertManager(cooldown=60)
+    expected_alerts = [
+        serial_manager.process_event(make_event(status="timeout"))
+        for _ in range(worker_count)
+    ]
+    expected_count = sum(alert is not None for alert in expected_alerts)
+
+    def fire(_):
+        barrier.wait()
+        return am.process_event(make_event(status="timeout"))
+
+    previous_switch_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            alerts = list(pool.map(fire, range(worker_count)))
+    finally:
+        sys.setswitchinterval(previous_switch_interval)
+
+    concurrent_alerts = [alert for alert in alerts if alert is not None]
+    assert len(concurrent_alerts) == expected_count
+    assert len({alert.alert_id for alert in concurrent_alerts}) == expected_count
 
 
 def test_alert_cooldown_expiry():

@@ -13,7 +13,11 @@ from fastapi.responses import StreamingResponse
 from backend.api.auth import get_current_user
 
 logger = logging.getLogger(__name__)
-router = APIRouter(tags=["Video"], dependencies=[Depends(get_current_user)])
+# NOTE: the video router is intentionally public (no auth dependency).
+# The stream is consumed by a plain <img src="/video/stream"> tag, and browsers
+# cannot attach an Authorization header to image requests. See tasks/todo.md (P4-1)
+# which lists /video/* among the public endpoints.
+router = APIRouter(tags=["Video"])
 
 _FILENAME_RE = re.compile(r'^[a-zA-Z0-9_.-]+$')
 
@@ -193,7 +197,7 @@ def save_screenshot(sop_id: str, step_id: str, event_status: str) -> str | None:
         return None
 
 
-@router.get("/screenshots/{filename}")
+@router.get("/screenshots/{filename}", dependencies=[Depends(get_current_user)])
 async def get_screenshot(filename: str):
     """Serve a saved screenshot image."""
     from fastapi.responses import Response

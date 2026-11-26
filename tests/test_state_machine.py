@@ -134,6 +134,21 @@ def test_instance_timeout_check():
     assert inst.step_statuses["s1"] == StepStatus.TIMEOUT
 
 
+def test_timeout_sweep_advances_once_without_reemitting():
+    sop = make_test_sop()
+    sop.steps[0].timeout = 0
+    engine = StateMachineEngine()
+    inst = engine.start_sop(sop)
+    time.sleep(0.01)
+
+    timed_out = engine.check_all_timeouts()
+    assert timed_out == {"test": ["s1"]}
+    assert inst.step_statuses["s1"] == StepStatus.TIMEOUT
+    assert inst.step_statuses["s2"] == StepStatus.ACTIVE
+
+    assert engine.check_all_timeouts() == {}
+
+
 # --- Hit-frame confirmation tests ---
 
 def make_confirm_sop(confirm_frames=3):

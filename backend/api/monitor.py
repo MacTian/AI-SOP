@@ -2,6 +2,7 @@
 
 import csv
 import io
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +13,7 @@ from backend.models.database import get_db
 from backend.models.record import OperationRecord
 from backend.api.auth import get_current_user
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/monitor", tags=["Monitor"], dependencies=[Depends(get_current_user)])
 
 # These will be set by main.py after engine initialization
@@ -62,6 +64,66 @@ async def get_status():
     if _state_machine is None:
         return {"active_sops": [], "message": "Monitor not initialized"}
     return {"active_sops": _state_machine.get_all_states()}
+
+
+@router.post("/start/{sop_id}")
+async def start_sop(sop_id: str):
+    """Start a monitoring instance for an SOP definition.
+
+    This is what brings a SOP to life: only a started instance tracks step
+    progress, produces timeout events and screenshots, and shows up in
+    `/api/monitor/status`.
+    """
+    if _state_machine is None or _sop_manager is None:
+        raise HTTPException(status_code=503, detail="Monitor not initialized")
+
+    if _state_machine.get_instance(sop_id) is not None:
+        raise HTTPException(
+            status_code=409, detail=f"SOP '{sop_id}' is already running"
+        )
+
+    try:
+        definition = _sop_manager.load(sop_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"SOP '{sop_id}' not found")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not definition.steps:
+        raise HTTPException(
+            status_code=400, detail=f"SOP '{sop_id}' has no steps to monitor"
+        )
+
+    instance = _state_machine.start_sop(definition)
+    state = instance.get_state_dict()
+    await _broadcast_state(sop_id, state)
+    return {"status": "started", **state}
+
+
+@router.post("/stop/{sop_id}")
+async def stop_sop(sop_id: str):
+    """Stop a running SOP monitoring instance."""
+    if _state_machine is None:
+        raise HTTPException(status_code=503, detail="Monitor not initialized")
+
+    if _state_machine.get_instance(sop_id) is None:
+        raise HTTPException(
+            status_code=404, detail=f"No active instance for SOP '{sop_id}'"
+        )
+
+    _state_machine.stop_sop(sop_id)
+    await _broadcast_state(sop_id, None)
+    return {"status": "stopped", "sop_id": sop_id}
+
+
+async def _broadcast_state(sop_id: str, state: dict | None):
+    """Tell connected clients that the set of active SOPs changed."""
+    try:
+        from backend.api.ws import broadcast_event
+
+        await broadcast_event("sop_state", {"sop_id": sop_id, "state": state})
+    except Exception as e:  # broadcasting must never break the request
+        logger.debug(f"Failed to broadcast SOP state: {e}")
 
 
 @router.get("/sop/{sop_id}/state")

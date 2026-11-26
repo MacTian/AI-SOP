@@ -1,16 +1,45 @@
 <template>
   <div class="bg-white rounded-lg shadow-sm border">
-    <div class="p-4 border-b">
+    <div class="p-4 border-b flex items-center justify-between">
       <h3 class="font-medium">SOP Progress</h3>
+      <div class="flex items-center space-x-2">
+        <select
+          v-model="selectedSop"
+          class="text-xs border border-gray-300 rounded px-2 py-1 max-w-[9rem]"
+          :disabled="starting"
+        >
+          <option value="">{{ availableSops.length ? 'Select SOP…' : 'No SOP' }}</option>
+          <option v-for="s in availableSops" :key="s.sop_id" :value="s.sop_id">
+            {{ s.name || s.sop_id }}
+          </option>
+        </select>
+        <button
+          @click="startSelected"
+          :disabled="!selectedSop || starting"
+          class="px-2 py-1 text-xs rounded border border-green-300 text-green-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-green-50"
+        >
+          {{ starting ? 'Starting…' : 'Start' }}
+        </button>
+      </div>
     </div>
     <div class="p-4">
+      <div v-if="error" class="mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">
+        {{ error }}
+      </div>
       <div v-if="store.activeSops.length === 0" class="text-center text-gray-400 py-4">
         No active SOP
       </div>
       <div v-for="sop in store.activeSops" :key="sop.sop_id" class="mb-4 last:mb-0">
         <div class="flex items-center justify-between mb-1">
           <span class="text-sm font-medium">{{ sop.sop_name || sop.sop_id }}</span>
-          <span class="text-xs text-gray-500">{{ Math.round(sop.progress * 100) }}%</span>
+          <div class="flex items-center space-x-2">
+            <span class="text-xs text-gray-500">{{ Math.round(sop.progress * 100) }}%</span>
+            <button
+              @click="stopSop(sop.sop_id)"
+              class="text-xs text-gray-400 hover:text-red-600"
+              title="Stop this SOP"
+            >Stop</button>
+          </div>
         </div>
         <!-- Progress bar -->
         <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
@@ -43,9 +72,42 @@
 </template>
 
 <script setup>
+import { ref, computed } from 'vue'
 import { useMonitorStore } from '../stores/monitor'
 
 const store = useMonitorStore()
+const selectedSop = ref('')
+const starting = ref(false)
+const error = ref('')
+
+// SOPs that are defined but not yet running
+const availableSops = computed(() => {
+  const activeIds = new Set(store.activeSops.map(s => s.sop_id))
+  return (store.sopList || []).filter(s => !activeIds.has(s.sop_id))
+})
+
+async function startSelected() {
+  if (!selectedSop.value) return
+  starting.value = true
+  error.value = ''
+  try {
+    await store.startSop(selectedSop.value)
+    selectedSop.value = ''
+  } catch (e) {
+    error.value = e.response?.data?.detail || e.message
+  } finally {
+    starting.value = false
+  }
+}
+
+async function stopSop(sopId) {
+  error.value = ''
+  try {
+    await store.stopSop(sopId)
+  } catch (e) {
+    error.value = e.response?.data?.detail || e.message
+  }
+}
 
 function stepColor(status) {
   const map = {

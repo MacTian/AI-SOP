@@ -223,6 +223,8 @@ steps:
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/monitor/status` | 当前所有活跃 SOP 状态 |
+| POST | `/api/monitor/start/{sop_id}` | 启动一个 SOP 监控实例 |
+| POST | `/api/monitor/stop/{sop_id}` | 停止正在运行的 SOP 实例 |
 | GET | `/api/monitor/detection/candidates` | Top3 候选步骤 |
 | GET | `/api/monitor/records` | 操作记录查询 |
 | GET | `/api/monitor/records/export` | CSV 导出 |
@@ -233,7 +235,7 @@ steps:
 |------|------|------|
 | GET | `/video/stream` | MJPEG 视频流 |
 | GET | `/video/snapshot` | 单帧 JPEG 截图 |
-| GET | `/video/screenshots/{filename}` | 获取截图 |
+| GET | `/screenshots/{filename}` | 获取截图 |
 | GET | `/video/cameras` | 列出活跃摄像头 |
 | GET | `/video/stream/{camera_id}` | 指定摄像头 MJPEG 流 |
 | POST | `/api/video/analyze` | 上传视频文件分析 |

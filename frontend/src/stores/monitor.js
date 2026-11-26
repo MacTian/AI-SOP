@@ -34,6 +34,9 @@ export const useMonitorStore = defineStore('monitor', () => {
       if (detectionHistory.value.length > MAX_HISTORY) {
         detectionHistory.value.pop()
       }
+    } else if (msg.type === 'sop_state') {
+      // A SOP was started/stopped (possibly from another tab)
+      fetchStatus()
     } else if (msg.type === 'alert') {
       // Prepend new alert, avoid duplicates
       const exists = alerts.value.some(a => a.alert_id === msg.payload.alert_id)
@@ -70,6 +73,18 @@ export const useMonitorStore = defineStore('monitor', () => {
     activeSops.value = data.active_sops || []
   }
 
+  async function startSop(sopId) {
+    const { data } = await http.post(`/api/monitor/start/${sopId}`)
+    await fetchStatus()
+    return data
+  }
+
+  async function stopSop(sopId) {
+    const { data } = await http.post(`/api/monitor/stop/${sopId}`)
+    await fetchStatus()
+    return data
+  }
+
   async function fetchAlerts() {
     const { data } = await http.get('/api/monitor/alerts')
     alerts.value = data.alerts || []
@@ -100,5 +115,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     fetchStatus,
     fetchAlerts,
     fetchRecords,
+    startSop,
+    stopSop,
   }
 })

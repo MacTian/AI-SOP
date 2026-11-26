@@ -20,7 +20,6 @@ class ConnectionManager:
         self._connections: list[WebSocket] = []
 
     async def connect(self, ws: WebSocket):
-        await ws.accept()
         self._connections.append(ws)
         logger.info(f"WebSocket connected. Total: {len(self._connections)}")
 
@@ -52,6 +51,11 @@ manager = ConnectionManager()
 @router.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     """Main WebSocket endpoint. Clients receive real-time SOP events."""
+    # Accept first so auth failures arrive as application close code 4001.
+    # Closing before accept produces an HTTP 403 and browsers cannot distinguish
+    # it from a transport failure.
+    await ws.accept()
+
     # Authenticate via query param token
     token = ws.query_params.get("token")
     if not token:
@@ -59,7 +63,10 @@ async def websocket_endpoint(ws: WebSocket):
         return
 
     try:
-        import jwt
+        # Must use the same JWT library as auth.py (python-jose); PyJWT is not a
+        # dependency of this project, so `import jwt` would always fail here.
+        from jose import jwt
+
         payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
         username = payload.get("sub")
         if not username:

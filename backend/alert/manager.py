@@ -1,6 +1,7 @@
 """Alert manager: handles alert generation, escalation, deduplication."""
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -50,36 +51,45 @@ class AlertManager:
         self._rules: dict[str, AlertRule] = {}  # "sop_id:step_id" -> rule
         self._on_alert_callback = None
         self._counter = 0
+        self._lock = threading.RLock()
 
     def set_callback(self, callback):
         """Register callback for new alerts: callback(Alert)."""
-        self._on_alert_callback = callback
+        with self._lock:
+            self._on_alert_callback = callback
 
     def add_rule(self, rule: AlertRule):
         """Add or update an alert rule."""
-        key = f"{rule.sop_id}:{rule.step_id}"
-        self._rules[key] = rule
-        logger.info(f"Alert rule set: {key} -> {rule.level}")
+        with self._lock:
+            key = f"{rule.sop_id}:{rule.step_id}"
+            self._rules[key] = rule
+            logger.info(f"Alert rule set: {key} -> {rule.level}")
 
     def remove_rule(self, sop_id: str, step_id: str):
         """Remove an alert rule."""
-        self._rules.pop(f"{sop_id}:{step_id}", None)
+        with self._lock:
+            self._rules.pop(f"{sop_id}:{step_id}", None)
 
     def get_rules(self) -> list[dict]:
         """Return all configured rules."""
-        return [
-            {
-                "sop_id": r.sop_id,
-                "step_id": r.step_id,
-                "level": r.level,
-                "escalation_count": r.escalation_count,
-                "cooldown": r.cooldown,
-            }
-            for r in self._rules.values()
-        ]
+        with self._lock:
+            return [
+                {
+                    "sop_id": r.sop_id,
+                    "step_id": r.step_id,
+                    "level": r.level,
+                    "escalation_count": r.escalation_count,
+                    "cooldown": r.cooldown,
+                }
+                for r in self._rules.values()
+            ]
 
     def process_event(self, event: SopEvent) -> Alert | None:
         """Evaluate an event and generate an alert if needed."""
+        with self._lock:
+            return self._process_event_locked(event)
+
+    def _process_event_locked(self, event: SopEvent) -> Alert | None:
         level = self._determine_level(event)
         if level is None:
             return None
@@ -135,37 +145,40 @@ class AlertManager:
 
     def get_recent_alerts(self, limit: int = 50) -> list[dict]:
         """Return recent alerts as dicts."""
-        return [
-            {
-                "alert_id": a.alert_id,
-                "level": a.level,
-                "sop_id": a.sop_id,
-                "step_id": a.step_id,
-                "step_name": a.step_name,
-                "message": a.message,
-                "timestamp": a.timestamp.isoformat(),
-                "acknowledged": a.acknowledged,
-                "repeat_count": a.repeat_count,
-            }
-            for a in self._alerts[-limit:]
-        ]
+        with self._lock:
+            return [
+                {
+                    "alert_id": a.alert_id,
+                    "level": a.level,
+                    "sop_id": a.sop_id,
+                    "step_id": a.step_id,
+                    "step_name": a.step_name,
+                    "message": a.message,
+                    "timestamp": a.timestamp.isoformat(),
+                    "acknowledged": a.acknowledged,
+                    "repeat_count": a.repeat_count,
+                }
+                for a in self._alerts[-limit:]
+            ]
 
     def acknowledge(self, alert_id: str) -> bool:
         """Acknowledge an alert by ID."""
-        for a in self._alerts:
-            if a.alert_id == alert_id:
-                a.acknowledged = True
-                return True
-        return False
+        with self._lock:
+            for a in self._alerts:
+                if a.alert_id == alert_id:
+                    a.acknowledged = True
+                    return True
+            return False
 
     def acknowledge_all(self) -> int:
         """Acknowledge all unacknowledged alerts. Returns count."""
-        count = 0
-        for a in self._alerts:
-            if not a.acknowledged:
-                a.acknowledged = True
-                count += 1
-        return count
+        with self._lock:
+            count = 0
+            for a in self._alerts:
+                if not a.acknowledged:
+                    a.acknowledged = True
+                    count += 1
+            return count
 
     def _determine_level(self, event: SopEvent) -> str | None:
         """Determine alert level from event. Returns None if no alert needed."""
