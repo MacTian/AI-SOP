@@ -1,10 +1,44 @@
+<div align="center">
+
 # AI SOP Monitor
+
+**把摄像头画面变成实时的 SOP 合规信号。**
+
+YOLO26 · PyTorch · FastAPI · Vue 3 · WebSocket · Docker
 
 [中文文档](README_zh.md) | [English Documentation](README.md)
 
----
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLO26 进行目标检测（兼容 YOLOv8 模型），结合状态机和规则引擎，实时判断操作人员是否按照标准作业流程（SOP）执行操作。
+[![GitHub stars](https://img.shields.io/github/stars/MacTian/AI-SOP?style=social)](https://github.com/MacTian/AI-SOP/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/MacTian/AI-SOP?style=social)](https://github.com/MacTian/AI-SOP/forks)
+
+[快速开始](#快速开始) · [功能特性](#功能特性) · [界面截图](#界面截图) · [API 接口](#api-接口) · [参与贡献](#参与贡献)
+
+</div>
+
+AI SOP Monitor 是一个开源、端到端的实时 SOP 合规监控参考项目。它将 YOLO26 目标检测、可配置规则、带超时处理的状态机、多级告警、审计历史和 Vue 实时看板连接成一条完整链路，并提供 mock 模式和 Docker 支持，让你无需专用硬件也能快速体验完整流程。
+
+> **正在搭建装配、质检、培训或工业视觉流程？** Fork 这个项目，替换示例 SOP，再把规则改造成你的业务流程。
+
+## 为什么值得 Star 和 Fork
+
+- **完整业务闭环，不只是一个模型 Demo** — 摄像头采集、推理、规则、SOP 状态、告警、截图、SQLite 记录、REST API、WebSocket 和前端界面已经打通。
+- **没有摄像头或 GPU 也能体验** — mock 检测模式和 Docker Compose 支持让你无需专用硬件即可启动完整应用。
+- **适合二次开发** — 可替换模型、增加 SOP YAML 规则、接入更多摄像头，或对接自己的告警和存储系统。
+- **一份可落地的计算机视觉参考** — FastAPI + Vue 3 + PyTorch + OpenCV 集中在同一个可部署项目里。
+
+## 适合谁
+
+- 正在验证 SOP 合规检查的制造、质量和运营团队
+- 构建新工作流的计算机视觉、工业自动化工程师
+- 希望研究并扩展完整视觉应用的 AI、机器人和软件工程学习者
+
+如果这个项目对你有帮助，Star 可以让更多开发者发现它，Fork 则能给你一个清晰的二次开发起点。
 
 ## 界面截图
 
@@ -390,11 +424,21 @@ python3 -m pytest -q
 6. **特征融合** — YOLO 特征（80 类 × 数量和置信度 = 160 维）与 MediaPipe 手部关键点（126 维）组成 286 维融合向量
 7. **双形态交付** — FastAPI 同时提供 REST API 和构建后的 Vue SPA（catch-all 路由）
 
+## 参与贡献
+
+欢迎提交 Issues、功能建议、SOP 示例、部署经验和 Pull Request。
+
+- **给项目点一个 Star**，让更多开发者发现它：[Star AI SOP Monitor](https://github.com/MacTian/AI-SOP/stargazers)
+- **Fork 到自己的仓库**，改造成你的业务流程：[Fork on GitHub](https://github.com/MacTian/AI-SOP/forks)
+- **提交问题或想法**，帮助项目继续完善：[Open an issue](https://github.com/MacTian/AI-SOP/issues)
+
 ## 许可证
 
-本项目使用 MIT License。
+本项目使用 [MIT License](LICENSE)。
 
 ---
 
 **文档：** [中文版](README_zh.md) | [English Version](README.md)
+
+如果这个项目帮你节省了时间，欢迎点一个 Star，让更多开发者看到它。
 

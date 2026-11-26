@@ -1,10 +1,44 @@
+<div align="center">
+
 # AI SOP Monitor
+
+**Turn camera feeds into real-time SOP compliance signals.**
+
+YOLO26 · PyTorch · FastAPI · Vue 3 · WebSocket · Docker
 
 [中文文档](README_zh.md) | [English Documentation](README.md)
 
----
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-AI real-time SOP (Standard Operating Procedure) compliance monitoring system. Captures video streams via camera, uses YOLO26 for object detection (with legacy YOLOv8 model compatibility), and combines state machines with rule engines to determine in real-time whether operators are following standard operating procedures (SOP).
+[![GitHub stars](https://img.shields.io/github/stars/MacTian/AI-SOP?style=social)](https://github.com/MacTian/AI-SOP/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/MacTian/AI-SOP?style=social)](https://github.com/MacTian/AI-SOP/forks)
+
+[Quick Start](#quick-start) · [Features](#features) · [Screenshots](#screenshots) · [API](#api-endpoints) · [Contributing](#contributing)
+
+</div>
+
+AI SOP Monitor is an open-source, end-to-end reference application for real-time SOP compliance monitoring. It combines YOLO26 object detection, configurable rules, a timeout-aware state machine, multi-level alerts, audit history, and a live Vue dashboard. It ships with mock mode and Docker support so you can explore the full workflow without specialized hardware.
+
+> **Building an assembly, inspection, training, or industrial vision workflow?** Fork it, replace the demo SOP, and adapt the rules to your process.
+
+## Why Developers Star and Fork It
+
+- **A complete vertical slice, not another model demo** — camera capture, inference, event rules, SOP state, alerts, screenshots, SQLite records, REST API, WebSocket, and UI are already connected.
+- **Try it without a camera or GPU** — mock detection mode and Docker Compose support let you start the full application without specialized hardware.
+- **Fork-friendly extension points** — replace models, add SOP YAML rules, connect more cameras, or integrate your own alerting and storage.
+- **A practical computer vision reference** — FastAPI + Vue 3 + PyTorch + OpenCV in one deployable project.
+
+## Who Is It For
+
+- Manufacturing, quality, and operations teams prototyping SOP compliance checks
+- Computer vision and industrial automation engineers building a new workflow
+- AI, robotics, and software engineering learners who want a complete CV application to study and extend
+
+If that sounds useful, a star helps more builders discover the project, and a fork gives you a clean starting point for your own SOP rules.
 
 ## Screenshots
 
@@ -397,10 +431,20 @@ Camera(s) → CameraCapture (thread) → ImagePreprocessor → YOLO26 Detector
 6. **Feature Fusion** — YOLO features (80 classes × count+confidence = 160-dim) + MediaPipe hand landmarks (126-dim) = 286-dim fusion vector
 7. **Dual Delivery** — FastAPI serves both REST API and built Vue SPA (catch-all route)
 
+## Contributing
+
+Issues, feature requests, SOP examples, deployment notes, and pull requests are welcome.
+
+- **Star this repository** if it gives you a useful starting point: [Star AI SOP Monitor](https://github.com/MacTian/AI-SOP/stargazers)
+- **Fork it** to adapt the workflow to your own process: [Fork on GitHub](https://github.com/MacTian/AI-SOP/forks)
+- **Share an issue** for bugs, model support, or integration ideas: [Open an issue](https://github.com/MacTian/AI-SOP/issues)
+
 ## License
 
-This project is licensed under the MIT License.
+This project is licensed under the [MIT License](LICENSE).
 
 ---
 
 **Documentation:** [中文版](README_zh.md) | [English Version](README.md)
+
+If this project saves you time, a star helps more builders find it.
