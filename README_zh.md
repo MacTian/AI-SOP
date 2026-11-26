@@ -1,6 +1,24 @@
 # AI SOP Monitor
 
-AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLOv8 进行目标检测，结合状态机和规则引擎，实时判断操作人员是否按照标准作业流程（SOP）执行操作。
+[中文文档](README_zh.md) | [English Documentation](README.md)
+
+---
+
+AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLO26 进行目标检测（兼容 YOLOv8 模型），结合状态机和规则引擎，实时判断操作人员是否按照标准作业流程（SOP）执行操作。
+
+## 界面截图
+
+### 实时监控 Dashboard
+
+![实时监控 Dashboard](docs/images/dashboard.png)
+
+### SOP 编辑器
+
+![SOP 编辑器](docs/images/sop-editor.png)
+
+### 操作历史
+
+![操作历史](docs/images/history.png)
 
 ## 功能特性
 
@@ -12,7 +30,7 @@ AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLOv8 �
 - **告警系统** — 多级告警（info/warning/error/critical），支持升级机制和声音提示
 
 ### AI 识别
-- **YOLOv8 目标检测** — 实时检测 80 类物体，支持 mock 模式
+- **YOLO26 目标检测** — 默认实时检测 80 类物体，兼容旧版 YOLOv8 模型，并支持 mock 模式
 - **MediaPipe 手部关键点** — 提取 21 个手部关键点 × 2 只手（126 维特征）
 - **LSTM 时序分类器** — 基于 YOLO + 手部特征的时序动作识别
 - **多尺度窗口投票** — 多窗口长度预测融合（16/32/48 帧），降低识别抖动
@@ -23,7 +41,7 @@ AI 实时 SOP 合规监控系统。通过摄像头采集画面，使用 YOLOv8 �
 - **多边形标注** — 点击放置顶点，双击/右键闭合多边形，支持顶点吸附，精确标注不规则目标
 - **模型训练** — 上传 ZIP 数据集（支持 bbox + polygon 混合格式），配置训练参数，实时监控训练进度和指标（loss/mAP）
 - **数据导出** — 支持 YOLO 格式（bbox + segmentation）和 COCO JSON 格式导出
-- **国内镜像加速** — YOLO 预训练模型优先从国内镜像（ghfast.top）下载
+- **国内镜像加速** — YOLO 训练预训练权重可用时优先从国内镜像（ghfast.top）下载
 - **模型管理** — 训练完成后一键下载模型或设为当前检测模型
 - **YOLO 自动标注** — 基于当前检测器自动识别目标，生成标注建议
 
@@ -82,6 +100,7 @@ cd frontend && npm install
 # 方式三：Docker 部署
 docker compose up --build
 # → http://localhost:8000
+# → 首次启动会下载 yolo26n.pt，下载不可用时自动降级为 mock 模式
 ```
 
 ### 3. 访问系统
@@ -113,7 +132,7 @@ sop-monitor/
 │   │   ├── multi_camera.py         # 多摄像头管理器
 │   │   └── preprocessor.py         # 图像预处理（resize, ROI, JPEG）
 │   ├── inference/
-│   │   ├── detector.py             # YOLOv8 检测器（支持 mock fallback）
+│   │   ├── detector.py             # YOLO26 检测器（兼容 YOLOv8，支持 mock fallback）
 │   │   ├── engine.py               # 推理引擎（采集→预处理→检测→标注）
 │   │   ├── hand_extractor.py       # MediaPipe 手部关键点提取
 │   │   ├── feature_fusion.py       # YOLO + 手部特征融合
@@ -143,7 +162,7 @@ sop-monitor/
 │   │   ├── video_analysis.py       # 视频文件上传分析
 │   │   ├── alert_config.py         # 告警规则 CRUD
 │   │   ├── stats.py                # 统计数据 API（ECharts 数据源）
-│   │   └── training.py             # 训练 API（录像 + LSTM 训练）
+│   │   ├── training.py             # 训练 API（录像 + LSTM 训练）
 │   │   ├── labeling.py             # YOLO 数据标注 API（自动标注）
 │   │   └── yolo_training.py        # YOLO 模型训练 API（数据集 + 训练 + 模型管理）
 │   └── models/
@@ -156,8 +175,8 @@ sop-monitor/
 │   │   ├── SopEditor.vue           # SOP 编辑页
 │   │   ├── History.vue             # 历史记录（截图查看 + CSV 导出）
 │   │   ├── Training.vue            # 训练页（录像 + LSTM 训练）
-	│   │   ├── Labeling.vue            # YOLO 数据标注（图片上传 + 画布标注 + 自动标注）
-	│   │   ├── ModelTraining.vue       # YOLO 模型训练（数据集上传 + 训练监控 + 模型下载）
+│   │   ├── Labeling.vue            # YOLO 数据标注（图片上传 + 画布标注 + 自动标注）
+│   │   ├── ModelTraining.vue       # YOLO 模型训练（数据集上传 + 训练监控 + 模型下载）
 │   │   └── Login.vue               # 登录页面
 │   ├── components/
 │   │   ├── VideoStream.vue         # 视频流组件
@@ -175,7 +194,7 @@ sop-monitor/
 ├── sop_definitions/
 │   ├── example_assembly.yaml       # 示例 SOP
 │   └── templates/                  # 4 个预置模板
-├── tests/                          # 121 个测试用例
+├── tests/                          # 161 个测试用例
 ├── scripts/                        # 启动脚本
 ├── Dockerfile                      # 多阶段构建（前端 + 后端）
 ├── docker-compose.yml              # Docker Compose 服务定义
@@ -225,26 +244,33 @@ steps:
 | GET | `/api/monitor/status` | 当前所有活跃 SOP 状态 |
 | POST | `/api/monitor/start/{sop_id}` | 启动一个 SOP 监控实例 |
 | POST | `/api/monitor/stop/{sop_id}` | 停止正在运行的 SOP 实例 |
+| GET | `/api/monitor/sop/{sop_id}/state` | 获取单个 SOP 实例状态 |
 | GET | `/api/monitor/detection/candidates` | Top3 候选步骤 |
 | GET | `/api/monitor/records` | 操作记录查询 |
 | GET | `/api/monitor/records/export` | CSV 导出 |
 | GET | `/api/monitor/alerts` | 最近告警列表 |
+| POST | `/api/monitor/alerts/{alert_id}/acknowledge` | 确认单条告警 |
 
 ### 视频
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/video/stream` | MJPEG 视频流 |
 | GET | `/video/snapshot` | 单帧 JPEG 截图 |
-| GET | `/screenshots/{filename}` | 获取截图 |
+| GET | `/screenshots/{filename}` | 获取截图（需要 Bearer Token） |
 | GET | `/video/cameras` | 列出活跃摄像头 |
 | GET | `/video/stream/{camera_id}` | 指定摄像头 MJPEG 流 |
 | POST | `/api/video/analyze` | 上传视频文件分析 |
+
+`/video/*` 实时端点保持公开，以便浏览器 `<img>` 直接渲染视频流；截图文件需要认证。
 
 ### 训练
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/training/start` | 开始训练录像 |
 | POST | `/api/training/stop` | 停止录像 + 分析 |
+| GET | `/api/training/status` | 当前训练状态 |
+| GET | `/api/training/result` | 最近一次分析结果 |
+| POST | `/api/training/reset` | 重置训练会话 |
 | POST | `/api/training/save` | 保存为 SOP |
 | POST | `/api/training/lstm/train` | 训练 LSTM 模型 |
 | GET | `/api/training/lstm/status` | LSTM 训练状态 |
@@ -266,6 +292,7 @@ steps:
 | POST | `/api/training/yolo/start` | 开始 YOLO 训练 |
 | POST | `/api/training/yolo/stop` | 停止训练 |
 | GET | `/api/training/yolo/status` | 训练状态与指标 |
+| GET | `/api/training/yolo/gpu-info` | GPU 可用性信息 |
 | GET | `/api/training/yolo/download` | 下载训练好的模型 |
 | POST | `/api/training/yolo/use` | 设为当前检测模型 |
 
@@ -274,8 +301,12 @@ steps:
 |------|------|------|
 | GET | `/api/stats/summary` | 总体统计摘要 |
 | GET | `/api/stats/timeline` | 时序数据 |
+| GET | `/api/stats/detections` | 检测统计 |
+| GET | `/api/stats/sop/{sop_id}/completion` | SOP 完成率统计 |
 | GET | `/api/alerts/rules` | 告警规则 |
 | POST | `/api/alerts/rules` | 创建告警规则 |
+| DELETE | `/api/alerts/rules/{sop_id}/{step_id}` | 删除告警规则 |
+| POST | `/api/alerts/acknowledge-all` | 确认全部告警 |
 
 ## 配置项
 
@@ -286,24 +317,23 @@ steps:
 | `SOP_CAMERA_DEVICE` | 0 | 摄像头设备号 |
 | `SOP_CAMERA_DEVICES` | "" | 多摄像头设备号（逗号分隔，如 "0,1,2"） |
 | `SOP_CAMERA_FPS` | 15 | 采集帧率 |
-| `SOP_MODEL_PATH` | models/yolov8n.pt | YOLO 模型路径 |
+| `SOP_MODEL_PATH` | models/yolo26n.pt | YOLO 模型路径 |
 | `SOP_CONFIDENCE_THRESHOLD` | 0.5 | 检测置信度阈值 |
 | `SOP_INFERENCE_INTERVAL` | 0.5 | 推理间隔（秒） |
 | `SOP_DEFAULT_CONFIRM_FRAMES` | 3 | 默认命中帧确认数 |
 | `SOP_STRICT_ORDER` | false | 严格顺序模式（禁止跳步） |
 | `SOP_ALERT_COOLDOWN` | 30 | 告警去重冷却（秒） |
-| `SOP_SECRET_KEY` | sop-monitor-secret-key... | JWT 签名密钥（生产环境请修改） |
+| `SOP_SECRET_KEY` | 未设置时自动生成 | JWT 签名密钥（生产环境请设置稳定的随机值） |
 | `SOP_TOKEN_EXPIRE_MINUTES` | 480 | Token 有效期（分钟） |
 | `SOP_DEFAULT_ADMIN_PASSWORD` | admin123 | 默认管理员密码 |
 
 ## 测试
 
 ```bash
-cd /home/mac/sop-monitor
-python3 -m pytest tests/ -v
+python3 -m pytest -q
 ```
 
-125 个测试覆盖：SOP schema、状态机（含命中帧确认 + 严格顺序）、规则引擎、告警管理、检测器、SOP 管理、训练功能、LSTM 分类器、多摄像头、JWT 认证、全部 API 端点。
+161 个测试覆盖：SOP schema、状态机（命中帧确认、严格顺序、超时流转）、规则引擎、并发安全的告警管理、检测器、SOP 管理、训练功能、LSTM 分类器、多摄像头、JWT 认证、WebSocket 传输、安全回归和 API 端点。
 
 ## 默认账户
 
@@ -313,12 +343,12 @@ python3 -m pytest tests/ -v
 |--------|------|------|
 | admin | admin123 | admin |
 
-生产环境请通过 `SOP_DEFAULT_ADMIN_PASSWORD` 环境变量修改密码，并设置 `SOP_SECRET_KEY` 为随机密钥。
+生产环境暴露服务前，请覆盖 `SOP_DEFAULT_ADMIN_PASSWORD`，并将 `SOP_SECRET_KEY` 设置为稳定的随机值。Docker Compose 有意不设置 `SOP_SECRET_KEY`，未提供时后端会为当前进程生成临时密钥。
 
 ## 运行流程
 
 ```
-摄像头 → 采集线程 → 预处理 → YOLOv8 检测 → 规则引擎 → 状态机（命中帧确认）→ 告警管理
+摄像头 → 采集线程 → 预处理 → YOLO26 检测 → 规则引擎 → 状态机（命中帧确认）→ 告警管理
                                     ↓                                           ↓
                               MediaPipe 手部                               自动截图归档
                                     ↓                                           ↓
@@ -329,7 +359,42 @@ python3 -m pytest tests/ -v
                               Dashboard 显示                              ECharts 图表
 ```
 
-## English Documentation
+## 后端架构
 
-For English documentation, please see [README_EN.md](./README_EN.md).
+### 模块
+
+- **camera/** — OpenCV 摄像头采集线程、多摄像头管理、图像预处理
+- **inference/** — YOLO26 检测（兼容 YOLOv8）、MediaPipe 手部关键点、特征融合、LSTM 分类器、模拟数据生成
+- **extractor/** — 通过规则引擎完成检测结果到 SOP 事件的映射
+- **sop/** — SOP YAML CRUD、带命中帧确认的状态机
+- **alert/** — 告警去重、升级和规则管理
+- **training/** — 训练录像会话、步骤自动识别
+- **api/** — REST API 路由（认证、SOP、监控、视频、训练、YOLO 标注）
+- **models/** — SQLite 数据库和 ORM 模型（User、OperationRecord）
+
+## 前端架构
+
+- 使用 **Vue 3 Composition API** 和 **Pinia** 管理状态
+- 使用 **Vite** 构建、**TailwindCSS** 样式
+- 使用 **ECharts** 展示数据可视化
+- 使用 **WebSocket** 接收实时更新并自动重连
+- 使用 **Web Audio API** 播放告警声音
+
+## 关键设计模式
+
+1. **Mock 降级** — YOLO 检测器、手部提取器和手势分类器在无 GPU、无摄像头或依赖不可用时提供降级路径
+2. **类别映射层** — 将 SOP 语义名称（board、tool、solder）映射到可配置的 COCO 检测类别
+3. **命中帧确认** — 要求连续 `confirm_frames` 次检测（默认 3）才推进步骤，降低误触发
+4. **严格顺序模式** — 可通过 `strict_order` 配置拒绝非当前步骤事件
+5. **多摄像头支持** — 每个摄像头运行独立采集与推理流水线，通过统一回调汇总
+6. **特征融合** — YOLO 特征（80 类 × 数量和置信度 = 160 维）与 MediaPipe 手部关键点（126 维）组成 286 维融合向量
+7. **双形态交付** — FastAPI 同时提供 REST API 和构建后的 Vue SPA（catch-all 路由）
+
+## 许可证
+
+本项目使用 MIT License。
+
+---
+
+**文档：** [中文版](README_zh.md) | [English Version](README.md)
 

@@ -26,7 +26,7 @@ cd frontend && npm install
 # Backend: http://localhost:8000
 
 # Option C: Docker
-./scripts/run_docker.sh
+docker compose up --build
 ```
 
 ### 3. Login
@@ -36,7 +36,7 @@ cd frontend && npm install
 
 ## Main Features
 - 📹 Real-time video monitoring with AI detection
-- 🤖 YOLOv8 object detection (80+ classes)
+- 🤖 YOLO26 object detection (80 classes, YOLOv8-compatible)
 - ✋ MediaPipe hand tracking
 - 🧠 LSTM action recognition
 - 📝 Visual SOP editor

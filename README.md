@@ -1,10 +1,24 @@
 # AI SOP Monitor
 
-[🇨🇳 中文文档](README_zh.md) | [🇺🇸 English Documentation](README.md)
+[中文文档](README_zh.md) | [English Documentation](README.md)
 
 ---
 
-AI real-time SOP (Standard Operating Procedure) compliance monitoring system. Captures video streams via camera, uses YOLOv8 for object detection, and combines state machines with rule engines to determine in real-time whether operators are following standard operating procedures (SOP).
+AI real-time SOP (Standard Operating Procedure) compliance monitoring system. Captures video streams via camera, uses YOLO26 for object detection (with legacy YOLOv8 model compatibility), and combines state machines with rule engines to determine in real-time whether operators are following standard operating procedures (SOP).
+
+## Screenshots
+
+### Monitoring Dashboard
+
+![Monitoring dashboard](docs/images/dashboard.png)
+
+### SOP Editor
+
+![SOP editor](docs/images/sop-editor.png)
+
+### Operation History
+
+![Operation history](docs/images/history.png)
 
 ## Features
 
@@ -16,7 +30,7 @@ AI real-time SOP (Standard Operating Procedure) compliance monitoring system. Ca
 - **Alert System** — Multi-level alerts (info/warning/error/critical) with escalation mechanism and audio notifications
 
 ### AI Recognition
-- **YOLOv8 Object Detection** — Real-time detection of 80 object classes, supports mock mode for testing
+- **YOLO26 Object Detection** — Default real-time detector for 80 object classes, with legacy YOLOv8 model support and mock mode for testing
 - **MediaPipe Hand Landmarks** — Extracts 21 hand landmarks × 2 hands (126-dimensional feature vector)
 - **LSTM Temporal Classifier** — Temporal action recognition based on YOLO + hand features
 - **Multi-scale Window Voting** — Prediction fusion across multiple window lengths (16/32/48 frames) to reduce recognition jitter
@@ -27,7 +41,7 @@ AI real-time SOP (Standard Operating Procedure) compliance monitoring system. Ca
 - **Polygon Annotation** — Click to place vertices, double-click/right-click to close polygon, with vertex snapping for precise irregular target annotation
 - **Model Training** — Upload ZIP datasets (supports bbox + polygon mixed format), configure training parameters, monitor training progress and metrics (loss/mAP) in real-time
 - **Data Export** — Supports YOLO format (bbox + segmentation) and COCO JSON format
-- **Domestic Mirror Acceleration** — YOLO pre-trained models prioritized from domestic mirrors (ghfast.top) for faster downloads
+- **Domestic Mirror Acceleration** — YOLO training pre-trained weights are fetched from a domestic mirror (ghfast.top) when available
 - **Model Management** — One-click model download or set as current detection model after training
 - **YOLO Auto-annotation** — Generates annotation suggestions based on current detector
 
@@ -86,6 +100,7 @@ cd frontend && npm install
 # Method 3: Docker deployment
 docker compose up --build
 # → http://localhost:8000
+# → The detector downloads yolo26n.pt on first startup and falls back to mock mode if unavailable
 ```
 
 ### 3. Access System
@@ -117,7 +132,7 @@ sop-monitor/
 │   │   ├── multi_camera.py         # Multi-camera manager
 │   │   └── preprocessor.py         # Image preprocessing (resize, ROI, JPEG)
 │   ├── inference/
-│   │   ├── detector.py             # YOLOv8 detector (with mock fallback)
+│   │   ├── detector.py             # YOLO26 detector (YOLOv8 compatible, with mock fallback)
 │   │   ├── engine.py               # Inference engine (capture→preprocess→detect→annotate)
 │   │   ├── hand_extractor.py       # MediaPipe hand landmark extraction
 │   │   ├── feature_fusion.py       # YOLO + hand feature fusion
@@ -161,7 +176,8 @@ sop-monitor/
 │   │   ├── History.vue             # Operation records (screenshot viewing + CSV export)
 │   │   ├── Training.vue            # Training page (recording + LSTM training)
 │   │   ├── Labeling.vue            # YOLO data annotation (image upload + canvas drawing + auto-labeling)
-│   │   └── ModelTraining.vue       # YOLO model training (dataset upload + training monitoring + model download)
+│   │   ├── ModelTraining.vue       # YOLO model training (dataset upload + training monitoring + model download)
+│   │   └── Login.vue               # Authentication page
 │   ├── components/
 │   │   ├── VideoStream.vue         # Video stream component
 │   │   ├── SopProgress.vue         # SOP progress + hit-frame progress
@@ -178,7 +194,7 @@ sop-monitor/
 ├── sop_definitions/
 │   ├── example_assembly.yaml       # Example SOP
 │   └── templates/                  # 4 pre-built templates
-├── tests/                          # 125 test cases
+├── tests/                          # 161 test cases
 ├── scripts/                        # Startup scripts
 ├── Dockerfile                      # Multi-stage build (frontend + backend)
 ├── docker-compose.yml              # Docker Compose service definition
@@ -228,26 +244,33 @@ steps:
 | GET | `/api/monitor/status` | Current active SOP statuses |
 | POST | `/api/monitor/start/{sop_id}` | Start monitoring a SOP instance |
 | POST | `/api/monitor/stop/{sop_id}` | Stop a running SOP instance |
+| GET | `/api/monitor/sop/{sop_id}/state` | Get one SOP instance state |
 | GET | `/api/monitor/detection/candidates` | Top-3 candidate steps |
 | GET | `/api/monitor/records` | Operation records query |
 | GET | `/api/monitor/records/export` | CSV export |
 | GET | `/api/monitor/alerts` | Recent alerts list |
+| POST | `/api/monitor/alerts/{alert_id}/acknowledge` | Acknowledge an alert |
 
 ### Video
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/video/stream` | MJPEG video stream |
 | GET | `/video/snapshot` | Single JPEG snapshot |
-| GET | `/screenshots/{filename}` | Get screenshot file |
+| GET | `/screenshots/{filename}` | Get screenshot file (Bearer token required) |
 | GET | `/video/cameras` | List active cameras |
 | GET | `/video/stream/{camera_id}` | Specific camera MJPEG stream |
 | POST | `/api/video/analyze` | Upload video file for analysis |
+
+Live `/video/*` endpoints are public so browser `<img>` tags can render the stream. Screenshot files are authenticated.
 
 ### Training
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/training/start` | Start training recording |
 | POST | `/api/training/stop` | Stop recording + analyze |
+| GET | `/api/training/status` | Current training status |
+| GET | `/api/training/result` | Latest analysis result |
+| POST | `/api/training/reset` | Reset the training session |
 | POST | `/api/training/save` | Save as SOP |
 | POST | `/api/training/lstm/train` | Train LSTM model |
 | GET | `/api/training/lstm/status` | LSTM training status |
@@ -269,6 +292,7 @@ steps:
 | POST | `/api/training/yolo/start` | Start YOLO training |
 | POST | `/api/training/yolo/stop` | Stop training |
 | GET | `/api/training/yolo/status` | Training status and metrics |
+| GET | `/api/training/yolo/gpu-info` | GPU availability information |
 | GET | `/api/training/yolo/download` | Download trained model |
 | POST | `/api/training/yolo/use` | Set as current detection model |
 
@@ -277,8 +301,12 @@ steps:
 |--------|------|-------------|
 | GET | `/api/stats/summary` | Overall statistics summary |
 | GET | `/api/stats/timeline` | Timeline data |
+| GET | `/api/stats/detections` | Detection statistics |
+| GET | `/api/stats/sop/{sop_id}/completion` | SOP completion statistics |
 | GET | `/api/alerts/rules` | Alert rules |
 | POST | `/api/alerts/rules` | Create alert rule |
+| DELETE | `/api/alerts/rules/{sop_id}/{step_id}` | Delete alert rule |
+| POST | `/api/alerts/acknowledge-all` | Acknowledge all alerts |
 
 ## Configuration
 
@@ -289,24 +317,23 @@ Configure via environment variables or `.env` file (prefix `SOP_`):
 | `SOP_CAMERA_DEVICE` | 0 | Camera device index |
 | `SOP_CAMERA_DEVICES` | "" | Multi-camera device IDs (comma-separated, e.g., "0,1,2") |
 | `SOP_CAMERA_FPS` | 15 | Capture frame rate |
-| `SOP_MODEL_PATH` | models/yolov8n.pt | YOLO model path |
+| `SOP_MODEL_PATH` | models/yolo26n.pt | YOLO model path |
 | `SOP_CONFIDENCE_THRESHOLD` | 0.5 | Detection confidence threshold |
 | `SOP_INFERENCE_INTERVAL` | 0.5 | Inference interval (seconds) |
 | `SOP_DEFAULT_CONFIRM_FRAMES` | 3 | Default hit-frame confirmation count |
 | `SOP_STRICT_ORDER` | false | Strict order mode (disallow step skipping) |
 | `SOP_ALERT_COOLDOWN` | 30 | Alert deduplication cooldown (seconds) |
-| `SOP_SECRET_KEY` | sop-monitor-secret-key... | JWT signing key (change in production) |
+| `SOP_SECRET_KEY` | Auto-generated if unset | JWT signing key (set a stable random value in production) |
 | `SOP_TOKEN_EXPIRE_MINUTES` | 480 | Token expiration (minutes) |
 | `SOP_DEFAULT_ADMIN_PASSWORD` | admin123 | Default admin password |
 
 ## Testing
 
 ```bash
-cd /home/mac/AI-SOP
-python -m pytest tests/ -v
+python3 -m pytest -q
 ```
 
-125 test cases covering: SOP schema, state machine (hit-frame confirmation + strict order), rule engine, alert management, detector, SOP management, training functions, LSTM classifier, multi-camera, JWT auth, all API endpoints.
+161 tests cover SOP schema, state machine (hit-frame confirmation, strict order, timeout transitions), rule engine, concurrency-safe alert management, detector, SOP management, training, LSTM classification, multi-camera, JWT auth, WebSocket transport, security regressions, and API endpoints.
 
 ## Default Account
 
@@ -316,12 +343,12 @@ Admin account auto-created on first launch:
 |----------|----------|------|
 | admin | admin123 | admin |
 
-**Production note:** Change password via `SOP_DEFAULT_ADMIN_PASSWORD` environment variable and set `SOP_SECRET_KEY` to a random secret.
+**Production note:** Before exposing the service, override `SOP_DEFAULT_ADMIN_PASSWORD` and set `SOP_SECRET_KEY` to a stable random value. Docker Compose intentionally leaves `SOP_SECRET_KEY` unset, so the backend generates a per-process key unless you provide one.
 
 ## Data Flow
 
 ```
-Camera(s) → CameraCapture (thread) → ImagePreprocessor → YOLOv8 Detector
+Camera(s) → CameraCapture (thread) → ImagePreprocessor → YOLO26 Detector
                                                           ↓
                                                    MediaPipe HandExtractor
                                                           ↓
@@ -344,7 +371,7 @@ Camera(s) → CameraCapture (thread) → ImagePreprocessor → YOLOv8 Detector
 ### Modules
 
 - **camera/** — Camera capture (OpenCV thread), multi-camera manager, preprocessing
-- **inference/** — YOLOv8 detection, MediaPipe hand extraction, feature fusion, LSTM classifier, mock data generation
+- **inference/** — YOLO26 detection (YOLOv8 compatible), MediaPipe hand extraction, feature fusion, LSTM classifier, mock data generation
 - **extractor/** — Detection→SOP event mapping via rule engine
 - **sop/** — SOP YAML CRUD, state machine with hit-frame confirmation
 - **alert/** — Alert deduplication, escalation, rule-based management
@@ -376,4 +403,4 @@ This project is licensed under the MIT License.
 
 ---
 
-**Documentation:** [🇨🇳 中文版](README_zh.md) | [🇺🇸 English Version](README.md)
+**Documentation:** [中文版](README_zh.md) | [English Version](README.md)
