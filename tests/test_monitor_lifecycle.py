@@ -216,24 +216,3 @@ def test_timeout_supervisor_runs_in_background(client, auth_headers):
     finally:
         client.post(f"/api/monitor/stop/{sop_id}", headers=auth_headers)
         client.delete(f"/api/sop/{sop_id}", headers=auth_headers)
-
-
-def test_timeout_supervisor_runs_in_background(client, auth_headers):
-    """The sweep must be scheduled on startup, not only callable by hand."""
-    sop_id = f"bg_timeout_{uuid.uuid4().hex[:8]}"
-    _create_sop(client, auth_headers, sop_id, step_timeout=0)
-    try:
-        client.post(f"/api/monitor/start/{sop_id}", headers=auth_headers)
-
-        deadline = time.time() + 8
-        while time.time() < deadline:
-            state = client.get(
-                f"/api/monitor/sop/{sop_id}/state", headers=auth_headers
-            ).json()
-            if state["step_statuses"]["s1"] == "timeout":
-                return
-            time.sleep(0.25)
-        pytest.fail("background timeout supervisor never fired")
-    finally:
-        client.post(f"/api/monitor/stop/{sop_id}", headers=auth_headers)
-        client.delete(f"/api/sop/{sop_id}", headers=auth_headers)

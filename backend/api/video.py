@@ -7,8 +7,10 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+
+from backend.api.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 # NOTE: the video router is intentionally public (no auth dependency).
@@ -195,7 +197,7 @@ def save_screenshot(sop_id: str, step_id: str, event_status: str) -> str | None:
         return None
 
 
-@router.get("/screenshots/{filename}")
+@router.get("/screenshots/{filename}", dependencies=[Depends(get_current_user)])
 async def get_screenshot(filename: str):
     """Serve a saved screenshot image."""
     from fastapi.responses import Response

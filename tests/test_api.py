@@ -1,6 +1,7 @@
 """Tests for API endpoints."""
 
 import pytest
+from fastapi import HTTPException
 
 
 # --- Root & Health ---
@@ -26,6 +27,38 @@ def test_health(client):
     assert data["status"] == "ok"
     assert "camera" in data
     assert "inference" in data
+
+
+def test_spa_static_path_rejects_parent_traversal(tmp_path):
+    """The SPA fallback must never resolve files outside the static directory."""
+    from backend import main as main_mod
+
+    static_dir = tmp_path / "static"
+    static_dir.mkdir()
+    (static_dir / "index.html").write_text("<div id=\"app\"></div>")
+    (tmp_path / "secret.txt").write_text("do not serve this")
+
+    with pytest.raises(HTTPException) as exc_info:
+        main_mod._resolve_spa_file("../secret.txt", static_dir)
+    assert exc_info.value.status_code == 404
+
+    assert main_mod._resolve_spa_file("index.html", static_dir) == (
+        static_dir / "index.html"
+    )
+
+
+def test_spa_endpoint_rejects_encoded_parent_traversal(client):
+    from backend import main as main_mod
+
+    if not main_mod._static_dir.is_dir():
+        pytest.skip("Frontend static build is not present")
+
+    for path in (
+        "/%2e%2e/README.md",
+        "/%2e%2e/sop_monitor.db",
+        "/%2e%2e/screenshots/test_screenshot_pytest.jpg",
+    ):
+        assert client.get(path).status_code == 404
 
 
 # --- Auth API ---
@@ -208,8 +241,8 @@ def test_video_snapshot_is_public(client):
     assert resp.status_code != 401
 
 
-def test_screenshot_is_public_and_served(client):
-    """Screenshots live at /screenshots/{filename} and need no auth either."""
+def test_screenshot_requires_auth_and_is_served(client, auth_headers):
+    """Screenshots live at /screenshots/{filename} and contain sensitive frames."""
     from backend.api import video as video_api
 
     video_api.SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -217,17 +250,28 @@ def test_screenshot_is_public_and_served(client):
     path = video_api.SCREENSHOTS_DIR / name
     path.write_bytes(b"\xff\xd8\xff\xd9")  # minimal JPEG marker pair
     try:
-        resp = client.get(f"/screenshots/{name}")
+        assert client.get(f"/screenshots/{name}").status_code == 401
+
+        resp = client.get(f"/screenshots/{name}", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/jpeg"
         assert resp.content == b"\xff\xd8\xff\xd9"
 
         # The old (wrong) frontend path must not exist any more
-        assert client.get(f"/video/screenshots/{name}").status_code == 404
+        assert (
+            client.get(
+                f"/video/screenshots/{name}", headers=auth_headers
+            ).status_code
+            == 404
+        )
 
         # Path traversal / bad names are still rejected
-        assert client.get("/screenshots/..%2Fsecret.txt").status_code in (400, 404)
-        assert client.get("/screenshots/missing.jpg").status_code == 404
+        assert client.get(
+            "/screenshots/..%2Fsecret.txt", headers=auth_headers
+        ).status_code in (400, 404)
+        assert client.get(
+            "/screenshots/missing.jpg", headers=auth_headers
+        ).status_code == 404
     finally:
         path.unlink(missing_ok=True)
 
@@ -237,9 +281,10 @@ def test_screenshot_is_public_and_served(client):
 def test_ws_rejects_missing_token(client):
     from starlette.websockets import WebSocketDisconnect
 
-    with pytest.raises(WebSocketDisconnect):
+    with pytest.raises(WebSocketDisconnect) as exc_info:
         with client.websocket_connect("/ws") as ws:
             ws.receive_text()
+    assert exc_info.value.code == 4001
 
 
 def test_ws_accepts_valid_token(client):

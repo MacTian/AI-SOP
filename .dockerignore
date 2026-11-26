@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+*.db
+*.sqlite3
+.pytest_cache
+
+frontend/node_modules
+frontend/dist
+static
+screenshots
+datasets
+trained_models

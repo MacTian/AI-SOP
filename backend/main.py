@@ -161,9 +161,6 @@ def _process_timeouts() -> list[tuple[SopEvent, object]]:
             _save_record(event)
             emitted.append((event, alert))
 
-        # A timed-out step is terminal — don't let it deadlock the whole SOP
-        instance.advance()
-
     return emitted
 
 
@@ -448,6 +445,15 @@ app.include_router(yolo_training_router)
 _static_dir = Path(__file__).parent.parent / "static"
 
 
+def _resolve_spa_file(full_path: str, static_dir: Path) -> Path:
+    """Resolve an SPA path while keeping it inside the static directory."""
+    base = static_dir.resolve()
+    candidate = (base / full_path).resolve()
+    if not candidate.is_relative_to(base):
+        raise HTTPException(status_code=404)
+    return candidate
+
+
 @app.get("/")
 async def root():
     """Root endpoint — serves SPA index.html when static exists, else API info."""
@@ -482,7 +488,7 @@ if _static_dir.is_dir():
         # Don't intercept API/WS/docs/health/screenshots routes
         if full_path.startswith(("api/", "video/", "ws/", "docs", "openapi", "health", "screenshots/")):
             raise HTTPException(status_code=404)
-        file_path = _static_dir / full_path
+        file_path = _resolve_spa_file(full_path, _static_dir)
         if file_path.is_file():
             from fastapi.responses import FileResponse
             return FileResponse(str(file_path))

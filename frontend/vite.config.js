@@ -23,6 +23,12 @@ export default defineConfig({
         secure: false,
         timeout: 30000,
       },
+      '/screenshots': {
+        target: 'http://172.28.16.1:8000',
+        changeOrigin: true,
+        secure: false,
+        timeout: 30000,
+      },
       '/ws': {
         target: 'ws://172.28.16.1:8000',
         ws: true,
